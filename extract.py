@@ -221,6 +221,42 @@ def cmd_benchmark_img(args):
     print(f"Daten:   {json_path}")
 
 
+def cmd_benchmark_local_ocr(args):
+    """Benchmark: DeepSeek OCR 2 vs. EasyOCR auf Handschrift + Rechnungs-PDF."""
+    from extractor.local_benchmark import (
+        format_local_benchmark_report,
+        run_local_ocr_benchmark,
+    )
+
+    methods = args.methods.split(",") if args.methods else None
+
+    result = run_local_ocr_benchmark(
+        handwriting_dir=args.handwriting_dir,
+        invoices_dir=args.invoices_dir,
+        methods=methods,
+        deepseek_quantize=args.quantize_4bit,
+        deepseek_backend=args.backend,
+        dpi=args.dpi,
+        ground_truth_json=args.ground_truth,
+    )
+
+    report = format_local_benchmark_report(result)
+    report_path = args.output or Path("benchmark_local_ocr.md")
+    report_path.write_text(report, encoding="utf-8")
+
+    json_path = report_path.with_suffix(".json")
+    json_path.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    print(f"\n{'=' * 60}")
+    print(report)
+    print(f"{'=' * 60}")
+    print(f"\nReport:  {report_path}")
+    print(f"Daten:   {json_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="doc-extractor: Dokumentenextraktion & OCR-Benchmark",
@@ -307,6 +343,23 @@ def main():
     )
     p.add_argument("--methods", type=str, default=None, help="z.B. vision,deepseek")
     p.set_defaults(func=cmd_benchmark_img)
+
+    p = sub.add_parser(
+        "benchmark-local-ocr",
+        parents=[],
+        help="Lokaler OCR-Benchmark: DeepSeek OCR 2 vs. EasyOCR",
+    )
+    p.add_argument("--quantize-4bit", action="store_true")
+    p.add_argument(
+        "--backend", choices=["transformers", "vllm"], default="transformers"
+    )
+    p.add_argument("--handwriting-dir", type=Path, required=True, help="Ordner mit Handschrift-Bildern")
+    p.add_argument("--invoices-dir", type=Path, required=True, help="Ordner mit Rechnungs-PDFs")
+    p.add_argument("--methods", type=str, default="deepseek,easyocr", help="z.B. deepseek,easyocr")
+    p.add_argument("--ground-truth", type=Path, default=None, help="JSON mit Soll-Properties pro PDF")
+    p.add_argument("--dpi", type=int, default=250)
+    p.add_argument("-o", "--output", type=Path, default=None)
+    p.set_defaults(func=cmd_benchmark_local_ocr)
 
     args = parser.parse_args()
 

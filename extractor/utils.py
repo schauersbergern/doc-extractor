@@ -127,6 +127,46 @@ def pptx_to_images(
     return sorted(image_paths)
 
 
+def pdf_to_images(
+    pdf_path: Path,
+    output_dir: Path | None = None,
+    dpi: int = 200,
+) -> list[Path]:
+    """Konvertiert PDF-Seiten zu PNG-Bildern via pdf2image/poppler."""
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF nicht gefunden: {pdf_path}")
+
+    if output_dir is None:
+        output_dir = Path(tempfile.mkdtemp(prefix="pdf_pages_"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from pdf2image import convert_from_path
+    except ImportError:
+        raise ImportError("pdf2image fehlt: pip install pdf2image")
+
+    poppler_path = _find_poppler_path()
+    if poppler_path is None:
+        raise RuntimeError(
+            "Poppler fehlt (pdfinfo/pdftoppm nicht gefunden).\n"
+            "Installation:\n"
+            "  macOS:  brew install poppler\n"
+            "  Ubuntu: sudo apt install poppler-utils"
+        )
+
+    logger.info(f"Rendere PDF: {pdf_path.name} → Bilder (DPI={dpi})")
+    images = convert_from_path(str(pdf_path), dpi=dpi, poppler_path=poppler_path)
+
+    image_paths = []
+    for i, img in enumerate(images, start=1):
+        img_path = output_dir / f"{pdf_path.stem}_page_{i:03d}.png"
+        img.save(str(img_path), "PNG")
+        image_paths.append(img_path)
+
+    return sorted(image_paths)
+
+
 def image_to_base64(image_path: Path, max_size: int = 2048) -> tuple[str, str]:
     """Konvertiert Bild zu Base64 für API-Calls.
 

@@ -1,0 +1,5 @@
+# Lokaler OCR-Benchmark (DeepSeek OCR 2 + EasyOCR)
+-r requirements-deepseek.txt
+
+# Zweites lokales OCR-Modell
+easyocr>=1.7.2
