@@ -1,0 +1,8 @@
+# Modus 2: Vision-LLM
+python-pptx>=0.6.23
+Pillow>=10.0.0
+pdf2image>=1.17.0
+
+# Provider SDKs (mindestens eines)
+anthropic>=0.40.0
+# openai>=1.50.0  # Auskommentieren wenn OpenAI gewünscht
