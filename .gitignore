@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.DS_Store
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Optional output artifacts
+*.log

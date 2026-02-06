@@ -1,4 +1,4 @@
-"""Modus 2: Vision-LLM Extraktion (Anthropic Claude / OpenAI GPT-4o).
+"""Modus 2: Vision-LLM Extraktion (Anthropic Claude / OpenAI GPT).
 
 Rendert Slides als Bilder und lässt ein Vision-LLM den Inhalt
 semantisch interpretieren — ideal für Flowcharts, Diagramme,
@@ -72,7 +72,7 @@ def _call_anthropic(
     image_b64: str,
     media_type: str,
     prompt: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-opus-4-5-20251101",
 ) -> str:
     """Ruft die Anthropic Messages API mit einem Bild auf."""
     try:
@@ -121,7 +121,7 @@ def _call_openai(
     image_b64: str,
     media_type: str,
     prompt: str,
-    model: str = "gpt-4o",
+    model: str = "gpt-5.2",
 ) -> str:
     """Ruft die OpenAI Chat Completions API mit einem Bild auf."""
     try:
@@ -140,7 +140,7 @@ def _call_openai(
 
     response = client.chat.completions.create(
         model=model,
-        max_tokens=4096,
+        max_completion_tokens=4096,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -167,9 +167,9 @@ def _call_openai(
 
 # Kosten pro Bild (ungefähre Werte, Stand 2025/2026)
 _COST_PER_IMAGE = {
-    "claude-sonnet-4-20250514": 0.012,  # ~1200 input tokens Bild + 1000 output
+    "claude-opus-4-5-20251101": 0.012,  # grober Richtwert
     "claude-haiku-4-5-20251001": 0.003,
-    "gpt-4o": 0.015,
+    "gpt-5.2": 0.015,
     "gpt-4o-mini": 0.003,
 }
 
@@ -188,7 +188,7 @@ def extract_vision(
         pptx_path: Pfad zur PPTX-Datei
         slide_numbers: Nur diese Slides (1-basiert)
         provider: 'anthropic' oder 'openai'
-        model: Modellname (Default: claude-sonnet-4 / gpt-4o)
+        model: Modellname (Default: claude-opus-4-5 / gpt-5.2)
         prompt_mode: 'slide' für Präsentationen, 'invoice' für Rechnungen
         dpi: Render-Auflösung
 
@@ -202,7 +202,7 @@ def extract_vision(
     # Defaults
     if model is None:
         model = (
-            "claude-sonnet-4-20250514" if provider == "anthropic" else "gpt-4o"
+            "claude-opus-4-5-20251101" if provider == "anthropic" else "gpt-5.2"
         )
 
     prompt = INVOICE_PROMPT if prompt_mode == "invoice" else SLIDE_PROMPT
@@ -280,7 +280,7 @@ def extract_vision_images(
     """
     if model is None:
         model = (
-            "claude-sonnet-4-20250514" if provider == "anthropic" else "gpt-4o"
+            "claude-opus-4-5-20251101" if provider == "anthropic" else "gpt-5.2"
         )
 
     prompt = INVOICE_PROMPT if prompt_mode == "invoice" else SLIDE_PROMPT

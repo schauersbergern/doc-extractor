@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
+import sys
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -23,6 +25,22 @@ logger = logging.getLogger(__name__)
 _model_cache: dict = {}
 
 
+def _validate_runtime() -> None:
+    """Prüft bekannte Laufzeitvoraussetzungen für DeepSeek OCR 2."""
+    if sys.version_info >= (3, 14):
+        raise RuntimeError(
+            "DeepSeek OCR 2 benötigt aktuell Python <= 3.13 "
+            "(tokenizers==0.20.3 ist unter Python 3.14 nicht kompatibel)."
+        )
+
+    # Praktisch nutzbar ist DeepSeek hier nur mit CUDA/NVIDIA.
+    if platform.system() == "Darwin":
+        raise RuntimeError(
+            "DeepSeek OCR 2 ist für NVIDIA/CUDA ausgelegt und wird auf macOS "
+            "nicht produktiv unterstützt. Nutze dafür Linux mit NVIDIA-GPU."
+        )
+
+
 def _load_model(quantize_4bit: bool = False, backend: str = "transformers"):
     """Lädt DeepSeek OCR 2. Cached nach erstem Aufruf.
 
@@ -33,6 +51,8 @@ def _load_model(quantize_4bit: bool = False, backend: str = "transformers"):
     Returns:
         Dict mit 'model', 'tokenizer', 'backend'
     """
+    _validate_runtime()
+
     cache_key = f"{backend}_{quantize_4bit}"
     if cache_key in _model_cache:
         logger.info("Modell aus Cache geladen")

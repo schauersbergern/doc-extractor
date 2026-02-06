@@ -1,8 +1,11 @@
 # Modus 2: Vision-LLM
+# System-Abhängigkeiten (separat installieren):
+#   macOS: brew install --cask libreoffice && brew install poppler
+#   Ubuntu: sudo apt install libreoffice poppler-utils
 python-pptx>=0.6.23
 Pillow>=10.0.0
 pdf2image>=1.17.0
 
-# Provider SDKs (mindestens eines)
+# Provider SDKs (beide enthalten)
 anthropic>=0.40.0
-# openai>=1.50.0  # Auskommentieren wenn OpenAI gewünscht
+openai>=1.50.0

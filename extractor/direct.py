@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.shapes.base import BaseShape
-from pptx.shapes.table import Table
+from pptx.table import Table
 
 from .models import SlideData, TableData, Timer
 from .utils import estimate_tokens

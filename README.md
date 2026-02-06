@@ -21,12 +21,22 @@ pip install -r requirements-vision.txt    # + Vision-LLM
 pip install -r requirements-deepseek.txt  # + DeepSeek OCR 2
 ```
 
+### API-Keys per `.env` (empfohlen)
+
+```bash
+cp .env.example .env
+# .env editieren und echte Keys eintragen
+
+set -a; source .env; set +a
+```
+
 ### Dental-Projekt (Vision-LLM)
 
 ```bash
-export ANTHROPIC_API_KEY='sk-ant-...'
-
-# Thorstens Slides → semantische Beschreibung als JSON
+# Standard-Provider ist anthropic
+# Default-Modelle (ohne --model):
+#   anthropic -> claude-opus-4-5-20251101
+#   openai    -> gpt-5.2
 python extract.py vision presentation.pptx --format json
 
 # Ergebnis: presentation_vision.json
@@ -43,6 +53,10 @@ python extract.py deepseek-img rechnung1.png rechnung2.jpg
 # PPTX mit DeepSeek
 python extract.py deepseek presentation.pptx --quantize-4bit
 ```
+
+Wichtig für DeepSeek OCR 2:
+- Linux + NVIDIA GPU (CUDA) empfohlen/erforderlich für produktiven Einsatz
+- Python 3.12 oder 3.13 verwenden (nicht 3.14)
 
 ### Benchmark (Uni-Präsentation)
 
@@ -87,7 +101,7 @@ extract.py benchmark-img <bilder...>       Benchmark Bilder
 
 ```
 --provider anthropic|openai    API-Provider (default: anthropic)
---model <name>                 Modellname
+--model <name>                 Modellname (optional, sonst Provider-Default)
 --prompt-mode slide|invoice    Prompt-Typ
 ```
 
@@ -110,7 +124,7 @@ extract.py benchmark-img <bilder...>       Benchmark Bilder
     "tables": [],
     "notes": "",
     "_meta": {
-      "method": "vision-anthropic/claude-sonnet-4-20250514",
+      "method": "vision-anthropic/claude-opus-4-5-20251101",
       "time_seconds": 3.241,
       "token_count": 487
     }
@@ -128,7 +142,7 @@ doc-extractor/
 │   ├── models.py           # SlideData, TableData, BenchmarkResult
 │   ├── utils.py            # Slide-Rendering, Base64, Token-Schätzung
 │   ├── direct.py           # Modus 1: PPTX-XML Extraktion
-│   ├── vision.py           # Modus 2: Vision-LLM (Claude/GPT-4o)
+│   ├── vision.py           # Modus 2: Vision-LLM (Claude/GPT)
 │   ├── deepseek.py         # Modus 3: DeepSeek OCR 2
 │   └── benchmark.py        # Vergleichs-Framework
 ├── requirements.txt
@@ -147,11 +161,22 @@ sudo apt install libreoffice          # Ubuntu
 brew install --cask libreoffice       # macOS
 ```
 
+### Poppler (für `pdf2image` in Vision/DeepSeek)
+
+`pdf2image` benötigt `pdfinfo` und `pdftoppm` (Poppler):
+
+```bash
+sudo apt install poppler-utils        # Ubuntu
+brew install poppler                  # macOS
+```
+
 ### NVIDIA GPU (nur DeepSeek)
 
 - Minimum: 8GB VRAM mit `--quantize-4bit`
 - Empfohlen: 16GB VRAM für volle Präzision
 - CUDA 11.8+
+- OS: Linux empfohlen
+- Python: 3.12 oder 3.13 (nicht 3.14)
 
 ## Hinweise
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -10,6 +11,40 @@ from pathlib import Path
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+
+def _find_libreoffice_binary() -> str:
+    """Findet ein verfügbares LibreOffice-CLI Binary auf Linux/macOS."""
+    for candidate in ("libreoffice", "soffice"):
+        path = shutil.which(candidate)
+        if path:
+            return path
+
+    # Standardpfad auf macOS bei App-Installation
+    macos_bundle_binary = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    if macos_bundle_binary.exists():
+        return str(macos_bundle_binary)
+
+    raise FileNotFoundError(
+        "LibreOffice CLI nicht gefunden. Installiere LibreOffice und stelle sicher, "
+        "dass 'soffice' oder 'libreoffice' im PATH ist.\n"
+        "macOS: brew install --cask libreoffice"
+    )
+
+
+def _find_poppler_path() -> str | None:
+    """Liefert das Verzeichnis mit pdfinfo/pdftoppm für pdf2image."""
+    pdfinfo = shutil.which("pdfinfo")
+    pdftoppm = shutil.which("pdftoppm")
+    if pdfinfo and pdftoppm:
+        return str(Path(pdfinfo).parent)
+
+    # Typische Homebrew-Pfade
+    for path in (Path("/opt/homebrew/bin"), Path("/usr/local/bin")):
+        if (path / "pdfinfo").exists() and (path / "pdftoppm").exists():
+            return str(path)
+
+    return None
 
 
 def pptx_to_images(
@@ -36,7 +71,7 @@ def pptx_to_images(
     pdf_dir.mkdir(exist_ok=True)
 
     cmd = [
-        "libreoffice", "--headless",
+        _find_libreoffice_binary(), "--headless",
         "--convert-to", "pdf",
         "--outdir", str(pdf_dir),
         str(pptx_path),
@@ -63,8 +98,17 @@ def pptx_to_images(
     except ImportError:
         raise ImportError("pdf2image fehlt: pip install pdf2image")
 
+    poppler_path = _find_poppler_path()
+    if poppler_path is None:
+        raise RuntimeError(
+            "Poppler fehlt (pdfinfo/pdftoppm nicht gefunden).\n"
+            "Installation:\n"
+            "  macOS:  brew install poppler\n"
+            "  Ubuntu: sudo apt install poppler-utils"
+        )
+
     logger.info(f"PDF → Bilder (DPI={dpi})")
-    images = convert_from_path(str(pdf_path), dpi=dpi)
+    images = convert_from_path(str(pdf_path), dpi=dpi, poppler_path=poppler_path)
 
     image_paths = []
     for i, img in enumerate(images):
