@@ -1,13 +1,13 @@
 # doc-extractor
 
-Dokumentenextraktion aus PowerPoint-Dateien und Bildern mit drei Modi — für Produktion (Dental-Projekt) und Uni-Präsentation (OCR-Benchmark).
+Dokumentenextraktion aus PowerPoint-Dateien und Bildern mit drei Modi — für Produktion (Kunden-Projekt) und Projektpräsentation (OCR-Benchmark).
 
 ## Drei Modi
 
 | Modus | Command | Benötigt | Use Case |
 |-------|---------|----------|----------|
 | **Direct** | `direct` | Nur CPU | Schnelle Textextraktion aus PPTX |
-| **Vision-LLM** | `vision` | API-Key (Anthropic/OpenAI) | Dental-Projekt: Flowcharts, Diagramme semantisch erfassen |
+| **Vision-LLM** | `vision` | API-Key (Anthropic/OpenAI) | Kunden-Projekt: Flowcharts, Diagramme semantisch erfassen |
 | **DeepSeek OCR 2** | `deepseek` | NVIDIA GPU (8-16GB VRAM) | Uni: Lokale OCR, Rechnungen, DSGVO-konform |
 
 ## Quick Start
@@ -31,7 +31,7 @@ cp .env.example .env
 set -a; source .env; set +a
 ```
 
-### Dental-Projekt (Vision-LLM)
+### Kunden-Projekt (Vision-LLM)
 
 ```bash
 # Standard-Provider ist anthropic
@@ -59,7 +59,7 @@ Wichtig für DeepSeek OCR 2:
 - Linux + NVIDIA GPU (CUDA) empfohlen/erforderlich für produktiven Einsatz
 - Python 3.12 oder 3.13 verwenden (nicht 3.14)
 
-### Benchmark (Uni-Präsentation)
+### Benchmark (Projektpräsentation)
 
 ```bash
 # Vergleich aller Methoden auf einer PPTX

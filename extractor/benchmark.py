@@ -1,6 +1,6 @@
 """Benchmark-Modul: Vergleich Vision-LLM vs. DeepSeek OCR 2.
 
-Erzeugt strukturierte Vergleichsdaten für die Uni-Präsentation.
+Erzeugt strukturierte Vergleichsdaten für die Projektpräsentation.
 """
 
 from __future__ import annotations

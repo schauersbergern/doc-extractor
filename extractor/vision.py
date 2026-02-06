@@ -4,7 +4,7 @@ Rendert Slides als Bilder und lässt ein Vision-LLM den Inhalt
 semantisch interpretieren — ideal für Flowcharts, Diagramme,
 komplexe Layouts.
 
-Dies ist der Produktionsmodus für das Dental-Projekt.
+Dies ist der Produktionsmodus für das Kunden-Projekt.
 """
 
 from __future__ import annotations

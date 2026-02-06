@@ -9,7 +9,7 @@ Drei Modi:
 Plus: Benchmark-Modus für Vergleich der Methoden.
 
 Beispiele:
-    # Dental-Projekt: Vision-LLM auf Thorstens Slides
+    # Kunden-Projekt: Vision-LLM auf Kunden-Slides
     python extract.py vision presentation.pptx
 
     # Rechnungen scannen mit DeepSeek OCR 2

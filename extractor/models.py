@@ -91,7 +91,7 @@ class SlideData:
 
 @dataclass
 class BenchmarkResult:
-    """Vergleichsergebnis für die Uni-Präsentation."""
+    """Vergleichsergebnis für die Projektpräsentation."""
     method: str
     total_slides: int
     total_time_seconds: float

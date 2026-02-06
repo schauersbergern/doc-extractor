@@ -3,7 +3,7 @@
 3B-Parameter-Modell für Dokumentenverständnis.
 Benötigt NVIDIA GPU mit min. 8GB VRAM (4-bit) / 16GB (volle Präzision).
 
-Einsatz: Rechnungen scannen, Uni-Präsentation, Benchmark vs. Vision-LLM.
+Einsatz: Rechnungen scannen, Projektpräsentation, Benchmark vs. Vision-LLM.
 """
 
 from __future__ import annotations
