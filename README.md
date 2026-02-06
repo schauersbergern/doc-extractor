@@ -58,6 +58,8 @@ python extract.py deepseek presentation.pptx --quantize-4bit
 Wichtig für DeepSeek OCR 2:
 - Linux + NVIDIA GPU (CUDA) empfohlen/erforderlich für produktiven Einsatz
 - Python 3.12 oder 3.13 verwenden (nicht 3.14)
+- Für `--quantize-4bit` werden `bitsandbytes` und `accelerate` benötigt
+- Falls gesetzt: `HF_HUB_ENABLE_HF_TRANSFER=1` erfordert zusätzlich `hf_transfer`
 
 ### Benchmark (Projektpräsentation)
 
@@ -140,6 +142,8 @@ extract.py benchmark-local-ocr             Lokaler OCR-Benchmark (DeepSeek vs Ea
 --backend transformers|vllm    Inference-Backend
 --prompt-mode structured|free|figure|describe
 ```
+
+Hinweis: Die DeepSeek-Requirements enthalten `bitsandbytes` + `accelerate`, damit 4-bit direkt läuft.
 
 ### `benchmark-local-ocr` Optionen
 

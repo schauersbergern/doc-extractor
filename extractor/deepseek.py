@@ -11,8 +11,11 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 import sys
 import tempfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Literal
 
@@ -166,16 +169,18 @@ def _infer_transformers(
     output_dir: Path,
 ) -> str:
     """Inferenz via Transformers-Backend."""
-    result = model.infer(
-        tokenizer,
-        prompt=prompt,
-        image_file=str(image_path),
-        output_path=str(output_dir),
-        base_size=1024,
-        image_size=768,
-        crop_mode=True,
-        save_results=False,
-    )
+    stdout_buf = StringIO()
+    with redirect_stdout(stdout_buf):
+        result = model.infer(
+            tokenizer,
+            prompt=prompt,
+            image_file=str(image_path),
+            output_path=str(output_dir),
+            base_size=1024,
+            image_size=768,
+            crop_mode=True,
+            save_results=False,
+        )
 
     if isinstance(result, str):
         return result
@@ -183,7 +188,28 @@ def _infer_transformers(
         return result["text"]
     elif isinstance(result, list):
         return "\n".join(str(r) for r in result)
-    return str(result)
+    elif result is not None:
+        return str(result)
+
+    # Einige DeepSeek-Versionen drucken den OCR-Text nur auf stdout und geben None zurück.
+    raw = stdout_buf.getvalue().strip()
+    if not raw:
+        return ""
+
+    cleaned_lines = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            cleaned_lines.append("")
+            continue
+        # Technische Debug-Ausgaben entfernen, OCR-Text behalten.
+        if re.match(r"^=+$", s):
+            continue
+        if s.startswith("BASE:") or s.startswith("PATCHES:"):
+            continue
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines).strip()
 
 
 def _infer_vllm_batch(

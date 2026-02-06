@@ -12,6 +12,8 @@ pdf2image>=1.17.0
 torch>=2.6.0
 transformers==4.46.3
 tokenizers==0.20.3
+accelerate>=0.26.0
+bitsandbytes>=0.43.0
 einops
 addict
 easydict
@@ -19,8 +21,8 @@ easydict
 # Flash Attention (optional, aber empfohlen)
 # pip install flash-attn==2.7.3 --no-build-isolation
 
-# 4-bit Quantisierung (optional)
-# bitsandbytes
+# 4-bit Quantisierung
+# bitsandbytes + accelerate sind oben als Abhängigkeiten enthalten
 
 # Alternative: vLLM statt Transformers (schneller)
 # pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly

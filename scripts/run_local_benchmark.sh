@@ -51,6 +51,14 @@ if [[ "$METHODS" == *"deepseek"* ]]; then
     echo "Installiere zuerst: pip install -r requirements-deepseek.txt"
     exit 1
   fi
+
+  if [[ -n "$QUANTIZE_FLAG" ]]; then
+    if ! python3 -c "import bitsandbytes, accelerate" >/dev/null 2>&1; then
+      echo "Für 4-bit fehlen Abhängigkeiten: bitsandbytes/accelerate"
+      echo "Installiere zuerst: pip install -r requirements-deepseek.txt"
+      exit 1
+    fi
+  fi
 fi
 
 CMD=(
