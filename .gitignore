@@ -9,3 +9,13 @@ __pycache__/
 
 # Optional output artifacts
 *.log
+
+# Local input/output data (Ordner bleiben, Inhalt wird ignoriert)
+data/**
+ppts/**
+results_from_runpod/**
+
+# Platzhalter erlauben
+!data/.gitkeep
+!ppts/.gitkeep
+!results_from_runpod/.gitkeep
