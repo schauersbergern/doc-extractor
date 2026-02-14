@@ -26,3 +26,6 @@ easydict
 
 # Alternative: vLLM statt Transformers (schneller)
 # pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly
+
+# Fuer GLM-OCR Endpoint-Aufrufe im Benchmark
+openai>=1.50.0

@@ -1,8 +1,9 @@
-"""doc-extractor: PPTX/Dokumentenextraktion mit drei Modi.
+"""doc-extractor: PPTX/Dokumentenextraktion mit mehreren Modi.
 
 Modus 1 (direct):   Direkte XML-Textextraktion — schnell, kein GPU
 Modus 2 (vision):   Vision-LLM (Claude/GPT-4o) — semantisch, Cloud
 Modus 3 (deepseek): DeepSeek OCR 2 — lokal, DSGVO, GPU
+Modus 4 (glm):      GLM-OCR — lokal gehosteter Vision-OCR Endpoint
 """
 
 from .models import SlideData, TableData, BenchmarkResult
@@ -29,10 +30,10 @@ try:
 except ImportError:
     pass
 
-# EasyOCR lokal
+# GLM-OCR — braucht openai SDK + laufenden lokalen Endpoint
 try:
-    from .easyocr_local import extract_easyocr_images
-    __all__.extend(["extract_easyocr_images"])
+    from .glm_ocr import extract_glm, extract_glm_images
+    __all__.extend(["extract_glm", "extract_glm_images"])
 except ImportError:
     pass
 

@@ -1,4 +1,4 @@
-"""Lokaler OCR-Benchmark: DeepSeek OCR 2 vs. EasyOCR."""
+"""Lokaler OCR-Benchmark: DeepSeek OCR 2 vs. GLM-OCR."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import json
 import logging
 from pathlib import Path
 
-from .easyocr_local import extract_easyocr_images
 from .invoice_properties import PROPERTY_KEYS, extract_invoice_properties, normalize_value
 from .models import Timer
+from .post_processing import transform_text_for_vector_db
 from .utils import pdf_to_images
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,14 @@ def _collect_files(folder: Path, suffixes: tuple[str, ...]) -> list[Path]:
     return files
 
 
-def _ocr_handwriting(images: list[Path], model: str, deepseek_quantize: bool, deepseek_backend: str) -> dict:
+def _ocr_handwriting(
+    images: list[Path],
+    model: str,
+    deepseek_quantize: bool,
+    deepseek_backend: str,
+    llm_provider: str,
+    llm_model: str | None,
+) -> dict:
     if model == "deepseek":
         from .deepseek import extract_deepseek_images
 
@@ -34,26 +41,46 @@ def _ocr_handwriting(images: list[Path], model: str, deepseek_quantize: bool, de
                 backend=deepseek_backend,
                 prompt_mode="free",
             )
-    elif model == "easyocr":
+    elif model == "glm":
+        from .glm_ocr import extract_glm_images
+
         with Timer() as timer:
-            slides = extract_easyocr_images(images, languages=["de", "en"], gpu=True)
+            slides = extract_glm_images(
+                images,
+                prompt_mode="free",
+            )
     else:
         raise ValueError(f"Unbekanntes Modell: {model}")
+
+    with Timer() as post_timer:
+        items = []
+        for i, slide in enumerate(slides):
+            vector_ready = transform_text_for_vector_db(
+                slide.content,
+                source_type="handwriting",
+                provider=llm_provider,
+                model=llm_model,
+            )
+            items.append(
+                {
+                    "file": str(images[i]),
+                    "text": slide.content,
+                    "vector_ready_text": vector_ready,
+                    "chars": len(slide.content),
+                    "tokens_estimate": slide.token_count,
+                }
+            )
+
+    total = timer.elapsed + post_timer.elapsed
 
     return {
         "model": model,
         "total_items": len(slides),
-        "total_time_seconds": round(timer.elapsed, 3),
-        "avg_time_seconds": round(timer.elapsed / len(slides), 3) if slides else 0.0,
-        "items": [
-            {
-                "file": str(images[i]),
-                "text": s.content,
-                "chars": len(s.content),
-                "tokens_estimate": s.token_count,
-            }
-            for i, s in enumerate(slides)
-        ],
+        "ocr_time_seconds": round(timer.elapsed, 3),
+        "post_processing_time_seconds": round(post_timer.elapsed, 3),
+        "total_time_seconds": round(total, 3),
+        "avg_time_seconds": round(total / len(slides), 3) if slides else 0.0,
+        "items": items,
     }
 
 
@@ -72,8 +99,13 @@ def _ocr_pdf_text(pdf_path: Path, model: str, deepseek_quantize: bool, deepseek_
                 backend=deepseek_backend,
                 prompt_mode="structured",
             )
-        elif model == "easyocr":
-            slides = extract_easyocr_images(page_images, languages=["de", "en"], gpu=True)
+        elif model == "glm":
+            from .glm_ocr import extract_glm_images
+
+            slides = extract_glm_images(
+                page_images,
+                prompt_mode="structured",
+            )
         else:
             raise ValueError(f"Unbekanntes Modell: {model}")
 
@@ -110,10 +142,17 @@ def run_local_ocr_benchmark(
     deepseek_backend: str = "transformers",
     dpi: int = 250,
     ground_truth_json: Path | None = None,
+    llm_provider: str = "openai",
+    llm_model: str | None = None,
 ) -> dict:
     """Benchmarkt zwei lokale OCR-Modelle auf Handschrift + Rechnungs-PDFs."""
     if methods is None:
-        methods = ["deepseek", "easyocr"]
+        methods = ["deepseek", "glm"]
+    invalid = sorted(set(methods) - {"deepseek", "glm"})
+    if invalid:
+        raise ValueError(
+            f"Ungültige Methoden: {', '.join(invalid)}. Erlaubt sind nur deepseek, glm"
+        )
 
     images = _collect_files(handwriting_dir, (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".bmp"))
     pdfs = _collect_files(invoices_dir, (".pdf",))
@@ -130,6 +169,7 @@ def run_local_ocr_benchmark(
             "invoice_files": [str(p) for p in pdfs],
         },
         "methods": methods,
+        "llm": {"provider": llm_provider, "model": llm_model or "(default)"},
         "handwriting": {},
         "invoices": {},
     }
@@ -141,6 +181,8 @@ def run_local_ocr_benchmark(
             model=model,
             deepseek_quantize=deepseek_quantize,
             deepseek_backend=deepseek_backend,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
         )
 
         logger.info(f"=== Rechnungs Benchmark: {model} ===")
@@ -154,7 +196,11 @@ def run_local_ocr_benchmark(
                     deepseek_backend=deepseek_backend,
                     dpi=dpi,
                 )
-                props = extract_invoice_properties(text)
+                props = extract_invoice_properties(
+                    text,
+                    provider=llm_provider,  # keine Regex-Heuristik mehr
+                    model=llm_model,
+                )
                 fill_count = sum(1 for k in PROPERTY_KEYS if normalize_value(props.get(k)))
                 row = {
                     "file": str(pdf),
@@ -185,13 +231,14 @@ def run_local_ocr_benchmark(
 
 def format_local_benchmark_report(data: dict) -> str:
     """Markdown-Report für den kombinierten lokalen OCR-Benchmark."""
-    lines = ["# Lokaler OCR-Benchmark: DeepSeek OCR 2 vs. EasyOCR", ""]
+    lines = ["# Lokaler OCR-Benchmark: DeepSeek OCR 2 vs. GLM-OCR", ""]
 
     lines.append("## Inputs")
     lines.append(f"- Handschrift-Ordner: `{data['inputs']['handwriting_dir']}`")
     lines.append(f"- Rechnungs-Ordner: `{data['inputs']['invoices_dir']}`")
     lines.append(f"- Handschrift-Dateien: {len(data['inputs']['handwriting_files'])}")
     lines.append(f"- Rechnungs-PDFs: {len(data['inputs']['invoice_files'])}")
+    lines.append(f"- Property/Post-Processing LLM: {data['llm']['provider']} / {data['llm']['model']}")
     lines.append("")
 
     lines.append("## Handschrift (OCR)")

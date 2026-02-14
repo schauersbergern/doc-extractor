@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HANDWRITING_DIR="${HANDWRITING_DIR:-$ROOT_DIR/data/handschrift}"
 INVOICES_DIR="${INVOICES_DIR:-$ROOT_DIR/data/rechnungen}"
 RESULTS_DIR="${RESULTS_DIR:-$ROOT_DIR/results}"
-METHODS="${METHODS:-deepseek,easyocr}"
+METHODS="${METHODS:-deepseek,glm}"
 BACKEND="${BACKEND:-transformers}"
 DPI="${DPI:-250}"
 QUANTIZE_FLAG="${QUANTIZE_FLAG:---quantize-4bit}"
@@ -37,9 +37,9 @@ OUTPUT_MD="$RESULTS_DIR/local_ocr_benchmark.md"
 cd "$ROOT_DIR"
 source .venv/bin/activate
 
-if [[ "$METHODS" == *"easyocr"* ]]; then
-  if ! python3 -c "import easyocr" >/dev/null 2>&1; then
-    echo "Fehlt: easyocr"
+if [[ "$METHODS" == *"glm"* ]]; then
+  if ! python3 -c "import openai" >/dev/null 2>&1; then
+    echo "Fehlt: openai SDK (fuer GLM-OCR Endpoint-Calls)"
     echo "Installiere zuerst: pip install -r requirements-local-ocr.txt"
     exit 1
   fi

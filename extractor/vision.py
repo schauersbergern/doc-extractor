@@ -16,7 +16,13 @@ from pathlib import Path
 from typing import Literal
 
 from .models import SlideData, Timer
-from .utils import estimate_tokens, image_to_base64, pptx_to_images
+from .utils import (
+    document_to_images,
+    estimate_tokens,
+    image_to_base64,
+    iter_supported_documents,
+    pptx_to_images,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,5 +309,64 @@ def extract_vision_images(
             extraction_time_seconds=timer.elapsed,
             token_count=estimate_tokens(text),
         ))
+
+    return results
+
+
+def extract_vision_documents(
+    input_dir: str | Path,
+    provider: Literal["anthropic", "openai"] = "anthropic",
+    model: str | None = None,
+    prompt_mode: Literal["slide", "invoice"] = "slide",
+    dpi: int = 200,
+    recursive: bool = False,
+) -> list[SlideData]:
+    """Vision-LLM auf allen unterstuetzten Dateien in einem Ordner.
+
+    Unterstuetzt gaengige Office-/PDF-/Bildformate und konvertiert alles zuerst zu Bildern.
+    """
+    input_dir = Path(input_dir)
+    docs = iter_supported_documents(input_dir, recursive=recursive)
+
+    if model is None:
+        model = (
+            "claude-opus-4-5-20251101" if provider == "anthropic" else "gpt-5.2"
+        )
+
+    prompt = INVOICE_PROMPT if prompt_mode == "invoice" else SLIDE_PROMPT
+    call_fn = _call_anthropic if provider == "anthropic" else _call_openai
+
+    results: list[SlideData] = []
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="vision_docs_") as tmp:
+        tmp_path = Path(tmp)
+        slide_counter = 0
+
+        for doc_idx, doc_path in enumerate(docs, start=1):
+            logger.info(f"Vision-LLM Datei {doc_idx}/{len(docs)}: {doc_path.name}")
+            images = document_to_images(
+                doc_path,
+                output_dir=tmp_path / f"doc_{doc_idx:04d}",
+                dpi=dpi,
+                prefix=doc_path.stem,
+            )
+
+            for page_idx, img_path in enumerate(images, start=1):
+                slide_counter += 1
+                with Timer() as timer:
+                    b64, media_type = image_to_base64(img_path)
+                    text = call_fn(b64, media_type, prompt, model=model)
+
+                results.append(
+                    SlideData(
+                        slide_number=slide_counter,
+                        title=f"{doc_path.name} / Seite {page_idx}",
+                        content=text,
+                        notes=f"source_file={doc_path}",
+                        extraction_method=f"vision-{provider}/{model}",
+                        extraction_time_seconds=timer.elapsed,
+                        token_count=estimate_tokens(text),
+                    )
+                )
 
     return results

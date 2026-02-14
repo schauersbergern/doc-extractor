@@ -1,232 +1,161 @@
 # doc-extractor
 
-Dokumentenextraktion aus PowerPoint-Dateien und Bildern mit drei Modi — für Produktion (Kunden-Projekt) und Projektpräsentation (OCR-Benchmark).
+Dokumentenextraktion fuer PowerPoint, PDFs, Office-Dateien und Bilder.
 
-## Drei Modi
+Aktueller Fokus:
+- Benchmark nur noch **DeepSeek OCR 2** vs. **GLM-OCR**
+- Rechnungs-Properties via **LLM** (keine Regex-Heuristik)
+- Finaler **Post-Processing Schritt** fuer vektorisierungsbereiten Endtext (Handschrift + PowerPoint)
+- Vision-Ordnerworkflow fuer `ppts` mit gaengigen Dateiformaten
 
-| Modus | Command | Benötigt | Use Case |
-|-------|---------|----------|----------|
-| **Direct** | `direct` | Nur CPU | Schnelle Textextraktion aus PPTX |
-| **Vision-LLM** | `vision` | API-Key (Anthropic/OpenAI) | Kunden-Projekt: Flowcharts, Diagramme semantisch erfassen |
-| **DeepSeek OCR 2** | `deepseek` | NVIDIA GPU (8-16GB VRAM) | Uni: Lokale OCR, Rechnungen, DSGVO-konform |
+## Modi
 
-## Quick Start
+| Modus | Command | Use Case |
+|---|---|---|
+| `direct` | `extract.py direct <pptx>` | Schnelle XML-Textextraktion |
+| `vision` | `extract.py vision <pptx>` | Vision-LLM auf PPTX |
+| `vision-ppts` | `extract.py vision-ppts [ppts]` | Vision-LLM auf alle gaengigen Formate im Ordner |
+| `deepseek` | `extract.py deepseek <pptx>` | Lokale OCR mit DeepSeek OCR 2 |
+| `glm` | `extract.py glm <pptx>` | Lokale OCR via GLM-OCR Endpoint |
+
+## Installation
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 
-# Je nach Modus:
-pip install -r requirements.txt           # Direct only
-pip install -r requirements-vision.txt    # + Vision-LLM
-pip install -r requirements-deepseek.txt  # + DeepSeek OCR 2
-pip install -r requirements-local-ocr.txt # + DeepSeek OCR 2 vs EasyOCR Benchmark
+# Basis
+pip install -r requirements.txt
+
+# Vision (OpenAI/Anthropic SDKs)
+pip install -r requirements-vision.txt
+
+# DeepSeek OCR 2
+pip install -r requirements-deepseek.txt
+
+# Lokaler OCR-Benchmark (DeepSeek + GLM + LLM-Property/Post-Processing)
+pip install -r requirements-local-ocr.txt
 ```
 
-### API-Keys per `.env` (empfohlen)
+## API Keys und GLM Endpoint
 
 ```bash
 cp .env.example .env
-# .env editieren und echte Keys eintragen
-
 set -a; source .env; set +a
 ```
 
-### Kunden-Projekt (Vision-LLM)
+Zusatzvariablen fuer GLM:
+- `GLM_OCR_BASE_URL` (Default: `http://127.0.0.1:8000/v1`)
+- `GLM_OCR_MODEL` (Default: `glm-ocr`)
+- `GLM_OCR_API_KEY` (Default: `EMPTY`)
+
+## GLM-OCR lokal (README Option 2)
+
+Lokal gehosteter OpenAI-kompatibler Endpoint, wie in [GLM-OCR](https://github.com/zai-org/GLM-OCR/tree/main):
 
 ```bash
-# Standard-Provider ist anthropic
-# Default-Modelle (ohne --model):
-#   anthropic -> claude-opus-4-5-20251101
-#   openai    -> gpt-5.2
-python extract.py vision presentation.pptx --format json
-
-# Ergebnis: presentation_vision.json
-# → Enthält pro Slide: Titel, strukturierte Beschreibung, Prozessschritte
-# → Direkt verwendbar für Embedding/Vektorisierung
+# in der GLM-OCR Umgebung
+vllm serve zai-org/GLM-OCR-9B --served-model-name glm-ocr --trust-remote-code
 ```
 
-### Rechnungen scannen (DeepSeek OCR 2)
+Danach kann dieses Repo mit `extract.py glm ...` bzw. Benchmarks gegen den lokalen Endpoint laufen.
+
+## Benchmark (nur DeepSeek vs GLM)
 
 ```bash
-# Einzelne Rechnungen
-python extract.py deepseek-img rechnung1.png rechnung2.jpg
-
-# PPTX mit DeepSeek
-python extract.py deepseek presentation.pptx --quantize-4bit
-```
-
-Wichtig für DeepSeek OCR 2:
-- Linux + NVIDIA GPU (CUDA) empfohlen/erforderlich für produktiven Einsatz
-- Python 3.12 oder 3.13 verwenden (nicht 3.14)
-- Für `--quantize-4bit` werden `bitsandbytes` und `accelerate` benötigt
-- Falls gesetzt: `HF_HUB_ENABLE_HF_TRANSFER=1` erfordert zusätzlich `hf_transfer`
-
-### Benchmark (Projektpräsentation)
-
-```bash
-# Vergleich aller Methoden auf einer PPTX
+# PPTX
 python extract.py benchmark presentation.pptx
 
-# Nur Vision vs. DeepSeek auf Rechnungen
+# Bilder/Rechnungen
 python extract.py benchmark-img rechnung1.png rechnung2.jpg
 
-# Nur bestimmte Methoden
-python extract.py benchmark presentation.pptx --methods direct,vision --slides 1-5
+# Methoden explizit
+python extract.py benchmark presentation.pptx --methods deepseek,glm
 ```
 
-Der Benchmark erzeugt:
-- `*_benchmark.md` — Lesbarer Report mit Tabelle
-- `*_benchmark.json` — Rohdaten für eigene Auswertung
+Outputs:
+- `*_benchmark.md`
+- `*_benchmark.json`
 
-### Lokaler OCR-Benchmark (Handschrift + Rechnungs-PDF)
+## Rechnungs-Scan Pipeline
+
+Im lokalen OCR-Benchmark fuer Rechnungen:
+1. OCR-Text pro PDF-Seite (DeepSeek oder GLM)
+2. **LLM-basierte Property-Extraktion** (`extractor/invoice_properties.py`)
+3. Optionales Ground-Truth Matching
+
+Wichtig: Regex-Heuristik wurde durch LLM-Extraktion ersetzt.
+
+## Finaler Post-Processing Schritt (Vektorisierung)
+
+Fuer Handschrift und PowerPoint wird ein finaler LLM-Transformationsschritt ausgefuehrt:
+- Handschrift: OCR-Rauschen normalisieren, sauberen Endtext erzeugen
+- PowerPoint: Prozesse/Diagramme in detaillierte textuelle Prozessbeschreibung ueberfuehren
+
+Der Endtext liegt im JSON als `vector_ready_text`.
+
+Deaktivieren (bei Commands mit Post-Processing):
+```bash
+--no-post-process
+```
+
+## Vision auf `ppts` Ordner mit Multi-Format-Erkennung
+
+```bash
+python extract.py vision-ppts ppts --provider openai --prompt-mode slide
+```
+
+Unterstuetzte Formate:
+- Office: `.ppt`, `.pptx`, `.odp`, `.doc`, `.docx`, `.odt`, `.rtf`, `.xls`, `.xlsx`, `.ods`
+- PDF: `.pdf`
+- Bilder: `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.webp`, `.bmp`, `.gif`
+
+Ablauf:
+1. Dateien im `ppts` Ordner erkennen
+2. Alles in Bilder umwandeln
+3. Vision-LLM OCR
+4. Finaler Endtext fuer Vektorisierung
+
+## Lokaler OCR-Benchmark (Handschrift + Rechnungs-PDF)
 
 ```bash
 python extract.py benchmark-local-ocr \
   --handwriting-dir data/handschrift \
   --invoices-dir data/rechnungen \
-  --methods deepseek,easyocr \
+  --methods deepseek,glm \
   --quantize-4bit \
-  -o local_ocr_benchmark.md
+  --llm-provider openai \
+  -o results/local_ocr_benchmark.md
 ```
 
-Oder als Runner-Skript (iteriert automatisch durch alle Dateien im Ordner):
-
+Oder:
 ```bash
 ./scripts/run_local_benchmark.sh
 ```
 
-Default-Ordner:
-- `data/handschrift` für Bilder (`png/jpg/jpeg/tif/tiff/webp/bmp`)
-- `data/rechnungen` für Rechnungen (`pdf`)
-- `results` für Outputs
+## Commands
 
-Output:
-- `local_ocr_benchmark.md` — Zusammenfassung (Zeit + Property-Füllgrad)
-- `local_ocr_benchmark.json` — OCR-Texte + extrahierte Properties je PDF/Modell
-
-## Alle Commands
-
-```
-extract.py direct      <pptx>              Direkte Textextraktion
-extract.py vision      <pptx>              Vision-LLM auf PPTX
-extract.py vision-img  <bilder...>         Vision-LLM auf Bilder
-extract.py deepseek    <pptx>              DeepSeek OCR 2 auf PPTX
-extract.py deepseek-img <bilder...>        DeepSeek OCR 2 auf Bilder
-extract.py benchmark   <pptx>              Benchmark PPTX
-extract.py benchmark-img <bilder...>       Benchmark Bilder
-extract.py benchmark-local-ocr             Lokaler OCR-Benchmark (DeepSeek vs EasyOCR)
+```text
+extract.py direct <pptx>
+extract.py vision <pptx>
+extract.py vision-img <bilder...>
+extract.py vision-ppts [ppts]
+extract.py deepseek <pptx>
+extract.py deepseek-img <bilder...>
+extract.py glm <pptx>
+extract.py glm-img <bilder...>
+extract.py benchmark <pptx>
+extract.py benchmark-img <bilder...>
+extract.py benchmark-local-ocr
 ```
 
-### Gemeinsame Optionen
+## Systemvoraussetzungen
 
-```
--o, --output PATH          Ausgabedatei
--v, --verbose              Debug-Ausgabe
---format text|json          Ausgabeformat (default: json)
---slides 1,3,5-10          Nur bestimmte Slides
---dpi 200                  Render-Auflösung
-```
+- LibreOffice CLI (`soffice`) fuer Office->PDF
+- Poppler (`pdfinfo`, `pdftoppm`) fuer PDF->Bilder
+- NVIDIA GPU fuer DeepSeek OCR 2 (Linux empfohlen)
 
-### Vision-spezifisch
-
-```
---provider anthropic|openai    API-Provider (default: anthropic)
---model <name>                 Modellname (optional, sonst Provider-Default)
---prompt-mode slide|invoice    Prompt-Typ
-```
-
-### DeepSeek-spezifisch
-
-```
---quantize-4bit                4-bit (8GB VRAM statt 16GB)
---backend transformers|vllm    Inference-Backend
---prompt-mode structured|free|figure|describe
-```
-
-Hinweis: Die DeepSeek-Requirements enthalten `bitsandbytes` + `accelerate`, damit 4-bit direkt läuft.
-
-### `benchmark-local-ocr` Optionen
-
-```
---handwriting-dir PATH        Ordner mit Handschrift-Bildern
---invoices-dir PATH           Ordner mit Rechnungs-PDFs
---methods deepseek,easyocr    Zu benchmarkende lokale OCR-Modelle
---ground-truth PATH           Optionales JSON mit Soll-Properties pro PDF
---quantize-4bit               DeepSeek 4-bit
---backend transformers|vllm   DeepSeek-Backend
---dpi 250                     Render-DPI für Rechnungs-PDFs
-```
-
-## Ausgabeformat (JSON)
-
-```json
-[
-  {
-    "slide_number": 1,
-    "title": "Vom potenziellen Kunden zum Neukunden",
-    "content": "## Prozessübersicht\n\nDer Slide zeigt einen dreistufigen...",
-    "tables": [],
-    "notes": "",
-    "_meta": {
-      "method": "vision-anthropic/claude-opus-4-5-20251101",
-      "time_seconds": 3.241,
-      "token_count": 487
-    }
-  }
-]
-```
-
-## Architektur
-
-```
-doc-extractor/
-├── extract.py              # CLI (Subcommands)
-├── extractor/
-│   ├── __init__.py
-│   ├── models.py           # SlideData, TableData, BenchmarkResult
-│   ├── utils.py            # Slide-Rendering, Base64, Token-Schätzung
-│   ├── direct.py           # Modus 1: PPTX-XML Extraktion
-│   ├── vision.py           # Modus 2: Vision-LLM (Claude/GPT)
-│   ├── deepseek.py         # Modus 3: DeepSeek OCR 2
-│   └── benchmark.py        # Vergleichs-Framework
-├── requirements.txt
-├── requirements-vision.txt
-├── requirements-local-ocr.txt
-└── requirements-deepseek.txt
-```
-
-## Voraussetzungen
-
-### LibreOffice (für Vision & DeepSeek Modi)
-
-Wird benötigt um PPTX-Slides als Bilder zu rendern:
-
+Beispiele:
 ```bash
-sudo apt install libreoffice          # Ubuntu
-brew install --cask libreoffice       # macOS
+brew install --cask libreoffice
+brew install poppler
 ```
-
-### Poppler (für `pdf2image` in Vision/DeepSeek)
-
-`pdf2image` benötigt `pdfinfo` und `pdftoppm` (Poppler):
-
-```bash
-sudo apt install poppler-utils        # Ubuntu
-brew install poppler                  # macOS
-```
-
-### NVIDIA GPU (nur DeepSeek)
-
-- Minimum: 8GB VRAM mit `--quantize-4bit`
-- Empfohlen: 16GB VRAM für volle Präzision
-- CUDA 11.8+
-- OS: Linux empfohlen
-- Python: 3.12 oder 3.13 (nicht 3.14)
-
-## Hinweise
-
-- **Vision-LLM ist für Flowcharts/Diagramme deutlich überlegen** gegenüber reiner OCR, da es semantische Beziehungen erfasst statt nur Text zu extrahieren.
-- **DeepSeek OCR 2 glänzt bei strukturierten Dokumenten** (Rechnungen, Formulare, Tabellen) — hier ist die Layouterkennung mit dem `<|grounding|>`-Tag stark.
-- **EasyOCR** dient als zweites lokales Vergleichsmodell im `benchmark-local-ocr`.
-- **Die `model.infer()` API** von DeepSeek OCR 2 basiert auf der aktuellen Dokumentation (Jan 2026). Falls sich das Interface ändert, muss `deepseek.py` → `_infer_transformers()` angepasst werden.
-- **Für den Benchmark** empfiehlt es sich, identische Dokumente mit beiden Methoden zu verarbeiten und die JSON-Outputs nebeneinander zu vergleichen.

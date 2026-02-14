@@ -12,6 +12,15 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".bmp", ".gif"}
+PDF_SUFFIXES = {".pdf"}
+OFFICE_SUFFIXES = {
+    ".ppt", ".pptx", ".odp",
+    ".doc", ".docx", ".odt", ".rtf",
+    ".xls", ".xlsx", ".ods",
+}
+SUPPORTED_DOC_SUFFIXES = IMAGE_SUFFIXES | PDF_SUFFIXES | OFFICE_SUFFIXES
+
 
 def _find_libreoffice_binary() -> str:
     """Findet ein verfügbares LibreOffice-CLI Binary auf Linux/macOS."""
@@ -47,6 +56,36 @@ def _find_poppler_path() -> str | None:
     return None
 
 
+def _convert_office_to_pdf(input_path: Path, output_dir: Path) -> Path:
+    """Konvertiert Office-Dokument via LibreOffice-CLI in PDF."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    before = set(output_dir.glob("*.pdf"))
+
+    cmd = [
+        _find_libreoffice_binary(),
+        "--headless",
+        "--convert-to", "pdf",
+        "--outdir", str(output_dir),
+        str(input_path),
+    ]
+    logger.info(f"Konvertiere Dokument: {input_path.name} -> PDF")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"LibreOffice-Konvertierung fehlgeschlagen ({input_path.name}):\n{result.stderr}"
+        )
+
+    created = [p for p in output_dir.glob("*.pdf") if p not in before]
+    if created:
+        return sorted(created)[-1]
+
+    expected = output_dir / f"{input_path.stem}.pdf"
+    if expected.exists():
+        return expected
+
+    raise FileNotFoundError(f"PDF nach Konvertierung nicht gefunden fuer: {input_path}")
+
+
 def pptx_to_images(
     pptx_path: Path,
     output_dir: Path | None = None,
@@ -62,75 +101,19 @@ def pptx_to_images(
     Returns:
         Sortierte Liste der Bild-Pfade
     """
-    if output_dir is None:
-        output_dir = Path(tempfile.mkdtemp(prefix="slides_"))
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Schritt 1: PPTX -> PDF via LibreOffice
-    pdf_dir = output_dir / "_pdf_temp"
-    pdf_dir.mkdir(exist_ok=True)
-
-    cmd = [
-        _find_libreoffice_binary(), "--headless",
-        "--convert-to", "pdf",
-        "--outdir", str(pdf_dir),
-        str(pptx_path),
-    ]
-
-    logger.info(f"Rendere Slides: {pptx_path.name} → PDF")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"LibreOffice-Konvertierung fehlgeschlagen:\n{result.stderr}\n\n"
-            "Installation:\n"
-            "  Ubuntu: sudo apt install libreoffice\n"
-            "  macOS:  brew install --cask libreoffice"
-        )
-
-    pdf_path = pdf_dir / f"{pptx_path.stem}.pdf"
-    if not pdf_path.exists():
-        raise FileNotFoundError(f"PDF nicht erzeugt: {pdf_path}")
-
-    # Schritt 2: PDF -> PNGs
-    try:
-        from pdf2image import convert_from_path
-    except ImportError:
-        raise ImportError("pdf2image fehlt: pip install pdf2image")
-
-    poppler_path = _find_poppler_path()
-    if poppler_path is None:
-        raise RuntimeError(
-            "Poppler fehlt (pdfinfo/pdftoppm nicht gefunden).\n"
-            "Installation:\n"
-            "  macOS:  brew install poppler\n"
-            "  Ubuntu: sudo apt install poppler-utils"
-        )
-
-    logger.info(f"PDF → Bilder (DPI={dpi})")
-    images = convert_from_path(str(pdf_path), dpi=dpi, poppler_path=poppler_path)
-
-    image_paths = []
-    for i, img in enumerate(images):
-        img_path = output_dir / f"slide_{i + 1:03d}.png"
-        img.save(str(img_path), "PNG")
-        image_paths.append(img_path)
-
-    # Cleanup PDF
-    pdf_path.unlink(missing_ok=True)
-    try:
-        pdf_dir.rmdir()
-    except OSError:
-        pass
-
-    logger.info(f"{len(image_paths)} Slide-Bilder erzeugt")
-    return sorted(image_paths)
+    return document_to_images(
+        document_path=pptx_path,
+        output_dir=output_dir,
+        dpi=dpi,
+        prefix="slide",
+    )
 
 
 def pdf_to_images(
     pdf_path: Path,
     output_dir: Path | None = None,
     dpi: int = 200,
+    prefix: str | None = None,
 ) -> list[Path]:
     """Konvertiert PDF-Seiten zu PNG-Bildern via pdf2image/poppler."""
     pdf_path = Path(pdf_path)
@@ -159,12 +142,80 @@ def pdf_to_images(
     images = convert_from_path(str(pdf_path), dpi=dpi, poppler_path=poppler_path)
 
     image_paths = []
+    name_prefix = prefix or f"{pdf_path.stem}_page"
     for i, img in enumerate(images, start=1):
-        img_path = output_dir / f"{pdf_path.stem}_page_{i:03d}.png"
+        img_path = output_dir / f"{name_prefix}_{i:03d}.png"
         img.save(str(img_path), "PNG")
         image_paths.append(img_path)
 
     return sorted(image_paths)
+
+
+def document_to_images(
+    document_path: Path,
+    output_dir: Path | None = None,
+    dpi: int = 200,
+    prefix: str | None = None,
+) -> list[Path]:
+    """Konvertiert ein unterstuetztes Dokument in PNG-Bilder."""
+    document_path = Path(document_path)
+    if not document_path.exists():
+        raise FileNotFoundError(f"Datei nicht gefunden: {document_path}")
+
+    suffix = document_path.suffix.lower()
+    if suffix not in SUPPORTED_DOC_SUFFIXES:
+        raise ValueError(
+            f"Nicht unterstuetztes Format: {document_path.suffix} ({document_path.name})"
+        )
+
+    if output_dir is None:
+        output_dir = Path(tempfile.mkdtemp(prefix="doc_images_"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    name_prefix = prefix or document_path.stem
+
+    if suffix in IMAGE_SUFFIXES:
+        img = Image.open(document_path).convert("RGB")
+        img_path = output_dir / f"{name_prefix}_page_001.png"
+        img.save(str(img_path), "PNG")
+        return [img_path]
+
+    if suffix in PDF_SUFFIXES:
+        return pdf_to_images(
+            document_path,
+            output_dir=output_dir,
+            dpi=dpi,
+            prefix=f"{name_prefix}_page",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="office_pdf_") as tmp:
+        tmp_pdf_dir = Path(tmp)
+        pdf_path = _convert_office_to_pdf(document_path, tmp_pdf_dir)
+        return pdf_to_images(
+            pdf_path,
+            output_dir=output_dir,
+            dpi=dpi,
+            prefix=name_prefix,
+        )
+
+
+def iter_supported_documents(folder: Path, recursive: bool = False) -> list[Path]:
+    """Liefert alle unterstuetzten Dateien aus einem Ordner."""
+    folder = Path(folder)
+    if not folder.exists():
+        raise FileNotFoundError(f"Ordner nicht gefunden: {folder}")
+
+    iterator = folder.rglob("*") if recursive else folder.glob("*")
+    docs = [
+        p for p in sorted(iterator)
+        if p.is_file() and p.suffix.lower() in SUPPORTED_DOC_SUFFIXES
+    ]
+    if not docs:
+        raise FileNotFoundError(
+            f"Keine unterstuetzten Dateien in {folder} gefunden. "
+            f"Unterstuetzt: {', '.join(sorted(SUPPORTED_DOC_SUFFIXES))}"
+        )
+    return docs
 
 
 def image_to_base64(image_path: Path, max_size: int = 2048) -> tuple[str, str]:

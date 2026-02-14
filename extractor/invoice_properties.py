@@ -1,8 +1,12 @@
-"""Extraktion strukturierter Rechnungs-Properties aus OCR-Text."""
+"""Extraktion strukturierter Rechnungs-Properties aus OCR-Text via LLM."""
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Literal
+
+from .llm_text import call_text_llm
 
 PROPERTY_KEYS = [
     "Belegnummer",
@@ -24,95 +28,104 @@ PROPERTY_KEYS = [
     "Gesamt Betrag",
 ]
 
-_DATE = r"(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})"
-_MONEY = r"([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:[.,][0-9]{2}))"
+_LIST_KEYS = {"Tags", "Positionen"}
+
+SYSTEM_PROMPT = """\
+Du extrahierst strukturierte Rechnungsdaten aus OCR-Text.
+Gib IMMER ein gueltiges JSON-Objekt mit exakt den vorgegebenen Keys zurueck.
+Keine Erklaerungen, keine Markdown-Formatierung.
+Wenn ein Feld unbekannt ist: leerer String.
+Fuer "Tags" und "Positionen": leere Liste [] falls nichts vorhanden.
+"""
 
 
-def _search(pattern: str, text: str) -> str:
-    m = re.search(pattern, text, flags=re.IGNORECASE)
-    return m.group(1).strip() if m else ""
+def _schema_json() -> str:
+    return json.dumps(
+        {key: ([] if key in _LIST_KEYS else "") for key in PROPERTY_KEYS},
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def extract_invoice_properties(ocr_text: str) -> dict:
-    """Heuristische Property-Extraktion für Rechnungsdaten."""
-    text = ocr_text or ""
-    lines = [_norm(x) for x in text.splitlines() if _norm(x)]
+def _extract_json_block(raw: str) -> dict:
+    """Parst JSON robust auch wenn das Modell Code-Fences mitschickt."""
+    s = (raw or "").strip()
+    if not s:
+        return {}
 
-    props = {k: "" for k in PROPERTY_KEYS}
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.IGNORECASE)
+        s = re.sub(r"\s*```$", "", s)
 
-    props["Belegnummer"] = _search(
-        r"(?:Beleg(?:nummer)?|Rechnungs(?:nummer|nr\.?)|Invoice\s*(?:No|#))\s*[:\-]?\s*([A-Z0-9\-\/_.]+)",
-        text,
-    )
-    props["Belegdatum"] = _search(
-        rf"(?:Belegdatum|Rechnungsdatum|Datum)\s*[:\-]?\s*{_DATE}",
-        text,
-    )
-    props["Lieferdatum"] = _search(
-        rf"(?:Lieferdatum|Leistungsdatum)\s*[:\-]?\s*{_DATE}",
-        text,
-    )
-    props["Fälligkeit"] = _search(
-        rf"(?:Fälligkeit|fällig(?:\s+am)?)\s*[:\-]?\s*{_DATE}",
-        text,
-    )
-    props["Kostenstelle"] = _search(
-        r"(?:Kostenstelle|Cost\s*Center)\s*[:\-]?\s*([A-Z0-9\-\/_. ]+)",
-        text,
-    )
-    props["Kategorie"] = _search(r"(?:Kategorie|Category)\s*[:\-]?\s*([^\n]+)", text)
-    props["Verknüpfung"] = _search(
-        r"(?:Verknüpfung|Referenz|Reference)\s*[:\-]?\s*([A-Z0-9\-\/_. ]+)",
-        text,
-    )
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        start = s.find("{")
+        end = s.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(s[start:end + 1])
+        raise
 
-    gross = _search(rf"(?:Brutto|Gesamtbetrag|Total)\s*[:\-]?\s*{_MONEY}", text)
-    net = _search(rf"(?:Netto|Zwischensumme)\s*[:\-]?\s*{_MONEY}", text)
-    vat_amount = _search(
-        rf"(?:USt|MwSt|VAT|Umsatzsteuer)\s*[:\-]?\s*{_MONEY}",
-        text,
-    )
-    vat_rate = _search(r"(?:USt|MwSt|VAT)[^%\n]{0,20}([0-9]{1,2}[.,]?[0-9]{0,2}\s*%)", text)
 
-    props["Betrag (Brutto)"] = gross
-    props["Gesamt Betrag"] = gross
-    props["Gesamt Netto"] = net
-    props["Gesamt Umsatzsteuer"] = vat_amount
-    props["Umsatzsteuer"] = vat_rate or vat_amount
+def _coerce_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            if item is None:
+                continue
+            text = _norm(str(item))
+            if text:
+                out.append(text)
+        return out
+    text = _norm(str(value))
+    return [text] if text else []
 
-    currency = _search(r"(EUR|€|USD|CHF|GBP)", text)
-    props["Währung"] = "EUR" if currency == "€" else currency
 
-    # Lieferant: erster sinnvoller Header-Block
-    if lines:
-        props["Lieferant"] = lines[0][:160]
-
-    # Beschreibung: erste Zeilen ohne Summenbereich
-    desc_lines = []
-    for line in lines[:15]:
-        if re.search(r"(Brutto|Netto|MwSt|USt|VAT|Gesamt)", line, re.IGNORECASE):
-            continue
-        desc_lines.append(line)
-    props["Beschreibung"] = " | ".join(desc_lines[:4])
-
-    # Positionen: Zeilen mit Preis-/Mengenmuster
-    pos = []
-    pos_pattern = re.compile(
-        rf"(?:\b[0-9]+(?:[.,][0-9]+)?\b.*{_MONEY}|{_MONEY}.*\b[0-9]+(?:[.,][0-9]+)?\b)",
-        re.IGNORECASE,
-    )
-    for line in lines:
-        if pos_pattern.search(line):
-            pos.append(line)
-        if len(pos) >= 10:
-            break
-    props["Positionen"] = pos
-
+def _coerce_properties(payload: dict) -> dict:
+    props = {}
+    for key in PROPERTY_KEYS:
+        value = payload.get(key, [] if key in _LIST_KEYS else "")
+        if key in _LIST_KEYS:
+            props[key] = _coerce_list(value)
+        else:
+            props[key] = _norm("" if value is None else str(value))
     return props
+
+
+def extract_invoice_properties(
+    ocr_text: str,
+    provider: Literal["openai", "anthropic"] = "openai",
+    model: str | None = None,
+) -> dict:
+    """LLM-basierte Property-Extraktion für Rechnungsdaten."""
+    text = (ocr_text or "").strip()
+    if not text:
+        return _coerce_properties({})
+
+    prompt = (
+        "Extrahiere die Rechnungsdaten aus folgendem OCR-Text.\n"
+        "Rueckgabeformat: Nur JSON mit exakt dieser Struktur:\n"
+        f"{_schema_json()}\n\n"
+        "OCR-Text:\n"
+        f"{text}"
+    )
+    raw = call_text_llm(
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=prompt,
+        provider=provider,
+        model=model,
+        max_tokens=4096,
+    )
+    payload = _extract_json_block(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("LLM-Antwort fuer Rechnungs-Properties ist kein JSON-Objekt.")
+    return _coerce_properties(payload)
 
 
 def normalize_value(value) -> str:

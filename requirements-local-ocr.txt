@@ -1,5 +1,6 @@
-# Lokaler OCR-Benchmark (DeepSeek OCR 2 + EasyOCR)
+# Lokaler OCR-Benchmark (DeepSeek OCR 2 + GLM-OCR)
 -r requirements-deepseek.txt
 
-# Zweites lokales OCR-Modell
-easyocr>=1.7.2
+# GLM-OCR Endpoint-Client + LLM-Property/Post-Processing
+openai>=1.50.0
+anthropic>=0.40.0

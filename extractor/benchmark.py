@@ -1,11 +1,10 @@
-"""Benchmark-Modul: Vergleich Vision-LLM vs. DeepSeek OCR 2.
+"""Benchmark-Modul: Vergleich DeepSeek OCR 2 vs. GLM-OCR.
 
 Erzeugt strukturierte Vergleichsdaten für die Projektpräsentation.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Literal
@@ -17,12 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Kosten pro Bild (geschätzt)
 COST_ESTIMATES = {
-    "direct": 0.0,
-    "vision-anthropic/claude-sonnet-4-20250514": 0.012,
-    "vision-anthropic/claude-haiku-4-5-20251001": 0.003,
-    "vision-openai/gpt-4o": 0.015,
-    "vision-openai/gpt-4o-mini": 0.003,
     "deepseek-ocr2": 0.0,  # Lokal, nur Stromkosten
+    "glm-ocr": 0.0,  # Lokal gehostet
 }
 
 
@@ -64,18 +59,16 @@ def benchmark_pptx(
     pptx_path: str | Path,
     methods: list[str] | None = None,
     slide_numbers: list[int] | None = None,
-    vision_provider: Literal["anthropic", "openai"] = "anthropic",
     deepseek_quantize: bool = False,
     deepseek_backend: Literal["transformers", "vllm"] = "transformers",
 ) -> list[BenchmarkResult]:
-    """Führt Benchmark über mehrere Extraktionsmethoden aus.
+    """Führt Benchmark über DeepSeek OCR 2 und GLM-OCR aus.
 
     Args:
         pptx_path: Pfad zur PPTX-Datei
-        methods: Liste von Methoden: 'direct', 'vision', 'deepseek'
-                 Default: alle verfügbaren
+        methods: Liste aus {'deepseek', 'glm'}
+                 Default: beide Methoden
         slide_numbers: Nur diese Slides benchmarken (1-basiert)
-        vision_provider: Provider für Vision-LLM
         deepseek_quantize: 4-bit für DeepSeek
         deepseek_backend: Backend für DeepSeek
 
@@ -84,46 +77,15 @@ def benchmark_pptx(
     """
     pptx_path = Path(pptx_path)
     if methods is None:
-        methods = ["direct", "vision", "deepseek"]
+        methods = ["deepseek", "glm"]
+    invalid = sorted(set(methods) - {"deepseek", "glm"})
+    if invalid:
+        raise ValueError(
+            f"Ungültige Benchmark-Methoden: {', '.join(invalid)}. "
+            "Erlaubt sind nur: deepseek, glm"
+        )
 
     results = []
-
-    # === Direct ===
-    if "direct" in methods:
-        logger.info("=== Benchmark: Direkte Extraktion ===")
-        from .direct import extract_direct
-
-        with Timer() as timer:
-            slides = extract_direct(pptx_path, slide_numbers=slide_numbers)
-
-        results.append(_make_benchmark_result(
-            method="direct",
-            slides=slides,
-            total_time=timer.elapsed,
-            gpu_required=False,
-            notes="Nur Text aus XML-Shapes, kein Layout-Kontext",
-        ))
-
-    # === Vision LLM ===
-    if "vision" in methods:
-        logger.info(f"=== Benchmark: Vision-LLM ({vision_provider}) ===")
-        from .vision import extract_vision
-
-        with Timer() as timer:
-            slides = extract_vision(
-                pptx_path,
-                slide_numbers=slide_numbers,
-                provider=vision_provider,
-            )
-
-        model = slides[0].extraction_method if slides else f"vision-{vision_provider}"
-        results.append(_make_benchmark_result(
-            method=model,
-            slides=slides,
-            total_time=timer.elapsed,
-            gpu_required=False,
-            notes="Cloud-API, semantische Interpretation, Layout-Verständnis",
-        ))
 
     # === DeepSeek OCR 2 ===
     if "deepseek" in methods:
@@ -148,13 +110,33 @@ def benchmark_pptx(
                   f"DSGVO-konform",
         ))
 
+    # === GLM-OCR ===
+    if "glm" in methods:
+        logger.info("=== Benchmark: GLM-OCR ===")
+        from .glm_ocr import extract_glm
+
+        with Timer() as timer:
+            slides = extract_glm(
+                pptx_path,
+                slide_numbers=slide_numbers,
+                prompt_mode="structured",
+            )
+
+        method = slides[0].extraction_method if slides else "glm-ocr"
+        results.append(_make_benchmark_result(
+            method=method,
+            slides=slides,
+            total_time=timer.elapsed,
+            gpu_required=True,
+            notes="Lokal gehostetes Vision-OCR (OpenAI-kompatibler Endpoint)",
+        ))
+
     return results
 
 
 def benchmark_images(
     image_paths: list[str | Path],
     methods: list[str] | None = None,
-    vision_provider: Literal["anthropic", "openai"] = "anthropic",
     prompt_mode: Literal["slide", "invoice"] = "invoice",
     deepseek_quantize: bool = False,
 ) -> list[BenchmarkResult]:
@@ -162,8 +144,7 @@ def benchmark_images(
 
     Args:
         image_paths: Liste von Bildpfaden
-        methods: 'vision', 'deepseek' (kein 'direct' möglich)
-        vision_provider: Provider für Vision-LLM
+        methods: 'deepseek', 'glm'
         prompt_mode: 'slide' oder 'invoice'
         deepseek_quantize: 4-bit für DeepSeek
 
@@ -171,38 +152,26 @@ def benchmark_images(
         Liste von BenchmarkResult
     """
     if methods is None:
-        methods = ["vision", "deepseek"]
+        methods = ["deepseek", "glm"]
+    invalid = sorted(set(methods) - {"deepseek", "glm"})
+    if invalid:
+        raise ValueError(
+            f"Ungültige Benchmark-Methoden: {', '.join(invalid)}. "
+            "Erlaubt sind nur: deepseek, glm"
+        )
 
     results = []
-
-    if "vision" in methods:
-        logger.info(f"=== Benchmark Bilder: Vision-LLM ({vision_provider}) ===")
-        from .vision import extract_vision_images
-
-        with Timer() as timer:
-            slides = extract_vision_images(
-                image_paths,
-                provider=vision_provider,
-                prompt_mode=prompt_mode,
-            )
-
-        method = slides[0].extraction_method if slides else f"vision-{vision_provider}"
-        results.append(_make_benchmark_result(
-            method=method,
-            slides=slides,
-            total_time=timer.elapsed,
-            gpu_required=False,
-            notes=f"Cloud-API, Modus: {prompt_mode}",
-        ))
 
     if "deepseek" in methods:
         logger.info("=== Benchmark Bilder: DeepSeek OCR 2 ===")
         from .deepseek import extract_deepseek_images
 
         with Timer() as timer:
+            deepseek_prompt_mode = "structured" if prompt_mode in {"slide", "invoice"} else prompt_mode
             slides = extract_deepseek_images(
                 image_paths,
                 quantize_4bit=deepseek_quantize,
+                prompt_mode=deepseek_prompt_mode,
             )
 
         method = slides[0].extraction_method if slides else "deepseek-ocr2"
@@ -211,7 +180,30 @@ def benchmark_images(
             slides=slides,
             total_time=timer.elapsed,
             gpu_required=True,
-            notes=f"Lokal, {'4-bit' if deepseek_quantize else 'volle Präzision'}",
+            notes=(
+                f"Lokal, {'4-bit' if deepseek_quantize else 'volle Präzision'}, "
+                f"Modus: {deepseek_prompt_mode}"
+            ),
+        ))
+
+    if "glm" in methods:
+        logger.info("=== Benchmark Bilder: GLM-OCR ===")
+        from .glm_ocr import extract_glm_images
+
+        with Timer() as timer:
+            glm_prompt_mode = "invoice" if prompt_mode == "invoice" else "structured"
+            slides = extract_glm_images(
+                image_paths,
+                prompt_mode=glm_prompt_mode,
+            )
+
+        method = slides[0].extraction_method if slides else "glm-ocr"
+        results.append(_make_benchmark_result(
+            method=method,
+            slides=slides,
+            total_time=timer.elapsed,
+            gpu_required=True,
+            notes=f"Lokal gehostet, Modus: {glm_prompt_mode}",
         ))
 
     return results

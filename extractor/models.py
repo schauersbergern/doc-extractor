@@ -43,6 +43,7 @@ class SlideData:
     tables: list[TableData] = field(default_factory=list)
     notes: str = ""
     images_ocr: list[str] = field(default_factory=list)
+    vector_ready_text: str = ""
     # Metadaten für Benchmark
     extraction_method: str = ""
     extraction_time_seconds: float = 0.0
@@ -64,6 +65,8 @@ class SlideData:
         for i, ocr_text in enumerate(self.images_ocr):
             if ocr_text.strip():
                 parts.append(f"\n[Bild {i + 1} - OCR]\n{ocr_text.strip()}")
+        if self.vector_ready_text.strip():
+            parts.append(f"\n[Vector-Ready Text]\n{self.vector_ready_text.strip()}")
         if include_notes and self.notes:
             parts.append(f"\n[Speaker Notes]\n{self.notes}")
         return "\n\n".join(parts)
@@ -80,6 +83,8 @@ class SlideData:
             result["notes"] = self.notes
         if self.images_ocr:
             result["images_ocr"] = self.images_ocr
+        if self.vector_ready_text:
+            result["vector_ready_text"] = self.vector_ready_text
         if self.extraction_method:
             result["_meta"] = {
                 "method": self.extraction_method,
