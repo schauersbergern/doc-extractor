@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 from .models import SlideData, Timer
-from .utils import estimate_tokens, image_to_base64, pptx_to_images
+from .utils import estimate_tokens, image_to_base64, pdf_to_images, pptx_to_images
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,10 @@ PROMPTS = {
     "structured": (
         "Extract all visible text from this document image and preserve layout in Markdown. "
         "Include headings, tables, bullets, and labels."
+    ),
+    "markdown": (
+        "Convert the document to markdown. Preserve headings, tables, lists, labels, "
+        "and reading order."
     ),
     "free": "Transcribe all visible text as plain text. Keep line breaks where useful.",
     "figure": (
@@ -92,7 +96,7 @@ def _call_glm_ocr(
 def extract_glm(
     pptx_path: str | Path,
     slide_numbers: list[int] | None = None,
-    prompt_mode: Literal["structured", "free", "figure", "describe", "invoice"] = "structured",
+    prompt_mode: Literal["structured", "markdown", "free", "figure", "describe", "invoice"] = "structured",
     model: str | None = None,
     base_url: str | None = None,
     api_key: str | None = None,
@@ -148,7 +152,7 @@ def extract_glm(
 
 def extract_glm_images(
     image_paths: list[str | Path],
-    prompt_mode: Literal["structured", "free", "figure", "describe", "invoice"] = "structured",
+    prompt_mode: Literal["structured", "markdown", "free", "figure", "describe", "invoice"] = "structured",
     model: str | None = None,
     base_url: str | None = None,
     api_key: str | None = None,
@@ -187,3 +191,33 @@ def extract_glm_images(
         )
 
     return results
+
+
+def extract_glm_pdf(
+    pdf_path: str | Path,
+    prompt_mode: Literal["structured", "markdown", "free", "figure", "describe", "invoice"] = "markdown",
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    dpi: int = 250,
+) -> list[SlideData]:
+    """Extrahiert Text aus PDF via Workflow: PDF -> Bilder -> GLM-OCR."""
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF nicht gefunden: {pdf_path}")
+
+    with tempfile.TemporaryDirectory(prefix="glm_pdf_") as tmp:
+        page_images = pdf_to_images(pdf_path, Path(tmp) / "pages", dpi=dpi)
+        slides = extract_glm_images(
+            page_images,
+            prompt_mode=prompt_mode,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+        )
+
+    for i, slide in enumerate(slides, start=1):
+        slide.slide_number = i
+        slide.title = f"{pdf_path.stem}_page_{i:03d}"
+
+    return slides

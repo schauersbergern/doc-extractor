@@ -16,7 +16,9 @@ Aktueller Fokus:
 | `vision` | `extract.py vision <pptx>` | Vision-LLM auf PPTX |
 | `vision-ppts` | `extract.py vision-ppts [ppts]` | Vision-LLM auf alle gaengigen Formate im Ordner |
 | `deepseek` | `extract.py deepseek <pptx>` | Lokale OCR mit DeepSeek OCR 2 |
+| `deepseek-pdf` | `extract.py deepseek-pdf <pdf>` | PDF -> Bilder -> Markdown (DeepSeek OCR 2) |
 | `glm` | `extract.py glm <pptx>` | Lokale OCR via GLM-OCR Endpoint |
+| `glm-pdf` | `extract.py glm-pdf <pdf>` | PDF -> Bilder -> Markdown (GLM-OCR) |
 
 ## Installation
 
@@ -65,6 +67,9 @@ Danach kann dieses Repo mit `extract.py glm ...` bzw. Benchmarks gegen den lokal
 # PPTX
 python extract.py benchmark presentation.pptx
 
+# PDF -> Bilder -> Markdown
+python extract.py benchmark-pdf rechnung.pdf
+
 # Bilder/Rechnungen
 python extract.py benchmark-img rechnung1.png rechnung2.jpg
 
@@ -75,6 +80,16 @@ python extract.py benchmark presentation.pptx --methods deepseek,glm
 Outputs:
 - `*_benchmark.md`
 - `*_benchmark.json`
+
+## PDF -> Image -> Markdown (DeepSeek/GLM)
+
+```bash
+# DeepSeek OCR 2 (Markdown-Output)
+python extract.py deepseek-pdf data/rechnung.pdf --prompt-mode markdown -o results/rechnung_deepseek.md
+
+# GLM-OCR (Markdown-Output)
+python extract.py glm-pdf data/rechnung.pdf --prompt-mode markdown -o results/rechnung_glm.md
+```
 
 ## Rechnungs-Scan Pipeline
 
@@ -141,10 +156,13 @@ extract.py vision-img <bilder...>
 extract.py vision-ppts [ppts]
 extract.py deepseek <pptx>
 extract.py deepseek-img <bilder...>
+extract.py deepseek-pdf <pdf>
 extract.py glm <pptx>
 extract.py glm-img <bilder...>
+extract.py glm-pdf <pdf>
 extract.py benchmark <pptx>
 extract.py benchmark-img <bilder...>
+extract.py benchmark-pdf <pdf>
 extract.py benchmark-local-ocr
 ```
 

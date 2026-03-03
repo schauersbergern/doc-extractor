@@ -25,22 +25,22 @@ except ImportError:
 
 # DeepSeek — braucht torch, transformers
 try:
-    from .deepseek import extract_deepseek, extract_deepseek_images
-    __all__.extend(["extract_deepseek", "extract_deepseek_images"])
+    from .deepseek import extract_deepseek, extract_deepseek_images, extract_deepseek_pdf
+    __all__.extend(["extract_deepseek", "extract_deepseek_images", "extract_deepseek_pdf"])
 except ImportError:
     pass
 
 # GLM-OCR — braucht openai SDK + laufenden lokalen Endpoint
 try:
-    from .glm_ocr import extract_glm, extract_glm_images
-    __all__.extend(["extract_glm", "extract_glm_images"])
+    from .glm_ocr import extract_glm, extract_glm_images, extract_glm_pdf
+    __all__.extend(["extract_glm", "extract_glm_images", "extract_glm_pdf"])
 except ImportError:
     pass
 
 # Benchmark
 try:
-    from .benchmark import benchmark_pptx, benchmark_images, format_benchmark_report
-    __all__.extend(["benchmark_pptx", "benchmark_images", "format_benchmark_report"])
+    from .benchmark import benchmark_pptx, benchmark_images, benchmark_pdf, format_benchmark_report
+    __all__.extend(["benchmark_pptx", "benchmark_images", "benchmark_pdf", "format_benchmark_report"])
 except ImportError:
     pass
 

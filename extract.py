@@ -44,6 +44,19 @@ def _write_output(slides, output_path: Path, fmt: str, include_notes: bool = Fal
     logging.getLogger(__name__).info(f"Geschrieben: {output_path}")
 
 
+def _write_markdown_pages(slides, output_path: Path, title: str):
+    """Schreibt OCR-Ergebnisse als Markdown mit Seitenstruktur."""
+    lines = [f"# {title}", ""]
+    for slide in slides:
+        lines.append(f"## Page {slide.slide_number}")
+        lines.append("")
+        text = (slide.content or "").strip()
+        lines.append(text if text else "_(kein Text erkannt)_")
+        lines.append("")
+    output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+    logging.getLogger(__name__).info(f"Geschrieben: {output_path}")
+
+
 def _extract_source_file(slide) -> str:
     notes = (slide.notes or "").strip()
     marker = "source_file="
@@ -211,6 +224,30 @@ def cmd_deepseek_img(args):
     print(f"✓ {len(slides)} Bilder -> {output}")
 
 
+def cmd_deepseek_pdf(args):
+    """DeepSeek OCR 2 auf PDF (PDF -> Bilder -> Markdown)."""
+    from extractor.deepseek import extract_deepseek_pdf
+
+    slides = extract_deepseek_pdf(
+        args.input,
+        quantize_4bit=args.quantize_4bit,
+        prompt_mode=args.prompt_mode,
+        backend=args.backend,
+        dpi=args.dpi,
+    )
+
+    if args.output:
+        output = args.output
+    else:
+        ext = ".json" if args.format == "json" else ".md"
+        output = args.input.with_name(f"{args.input.stem}_deepseek{ext}")
+    if args.format == "json":
+        _write_output(slides, output, "json")
+    else:
+        _write_markdown_pages(slides, output, title=f"{args.input.name} (DeepSeek OCR 2)")
+    print(f"✓ {len(slides)} Seiten -> {output}")
+
+
 def cmd_glm(args):
     """Modus 4: GLM-OCR auf PPTX."""
     from extractor.glm_ocr import extract_glm
@@ -249,6 +286,31 @@ def cmd_glm_img(args):
     output = args.output or Path("glm_output.json")
     _write_output(slides, output, "json")
     print(f"✓ {len(slides)} Bilder -> {output}")
+
+
+def cmd_glm_pdf(args):
+    """GLM-OCR auf PDF (PDF -> Bilder -> Markdown)."""
+    from extractor.glm_ocr import extract_glm_pdf
+
+    slides = extract_glm_pdf(
+        args.input,
+        prompt_mode=args.prompt_mode,
+        model=args.model,
+        base_url=args.base_url,
+        api_key=args.api_key,
+        dpi=args.dpi,
+    )
+
+    if args.output:
+        output = args.output
+    else:
+        ext = ".json" if args.format == "json" else ".md"
+        output = args.input.with_name(f"{args.input.stem}_glm{ext}")
+    if args.format == "json":
+        _write_output(slides, output, "json")
+    else:
+        _write_markdown_pages(slides, output, title=f"{args.input.name} (GLM-OCR)")
+    print(f"✓ {len(slides)} Seiten -> {output}")
 
 
 def cmd_benchmark(args):
@@ -310,6 +372,39 @@ def cmd_benchmark_img(args):
     print(f"Daten:   {json_path}")
 
 
+def cmd_benchmark_pdf(args):
+    """Benchmark: DeepSeek OCR 2 vs. GLM-OCR auf PDF."""
+    from extractor.benchmark import benchmark_pdf, format_benchmark_report
+
+    methods = args.methods.split(",") if args.methods else None
+    results = benchmark_pdf(
+        args.input,
+        methods=methods,
+        prompt_mode=args.prompt_mode,
+        deepseek_quantize=args.quantize_4bit,
+        deepseek_backend=args.backend,
+        dpi=args.dpi,
+    )
+
+    report = format_benchmark_report(results)
+    report_path = args.output or args.input.with_name(f"{args.input.stem}_benchmark_pdf.md")
+    report_path.write_text(report, encoding="utf-8")
+
+    json_path = report_path.with_suffix(".json")
+    json_data = {
+        "file": str(args.input),
+        "results": [r.to_dict() for r in results],
+        "pages": {r.method: [s.to_dict() for s in r.slides] for r in results},
+    }
+    json_path.write_text(json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(f"\n{'=' * 60}")
+    print(report)
+    print(f"{'=' * 60}")
+    print(f"\nReport:  {report_path}")
+    print(f"Daten:   {json_path}")
+
+
 def cmd_benchmark_local_ocr(args):
     """Benchmark: DeepSeek OCR 2 vs. GLM-OCR auf Handschrift + Rechnungs-PDF."""
     from extractor.local_benchmark import format_local_benchmark_report, run_local_ocr_benchmark
@@ -357,6 +452,17 @@ def main():
     pptx_common.add_argument("--format", choices=["text", "json"], default="json")
     pptx_common.add_argument("--dpi", type=int, default=200)
 
+    pdf_input_common = argparse.ArgumentParser(add_help=False)
+    pdf_input_common.add_argument("input", type=Path, help="PDF-Datei")
+    pdf_input_common.add_argument("-o", "--output", type=Path, default=None)
+    pdf_input_common.add_argument("--dpi", type=int, default=250)
+
+    pdf_ocr_common = argparse.ArgumentParser(add_help=False)
+    pdf_ocr_common.add_argument("input", type=Path, help="PDF-Datei")
+    pdf_ocr_common.add_argument("-o", "--output", type=Path, default=None)
+    pdf_ocr_common.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    pdf_ocr_common.add_argument("--dpi", type=int, default=250)
+
     img_common = argparse.ArgumentParser(add_help=False)
     img_common.add_argument("images", type=Path, nargs="+", help="Bilddateien")
     img_common.add_argument("-o", "--output", type=Path, default=None)
@@ -391,14 +497,14 @@ def main():
     deepseek_prompt_common = argparse.ArgumentParser(add_help=False)
     deepseek_prompt_common.add_argument(
         "--prompt-mode",
-        choices=["structured", "free", "figure", "describe"],
+        choices=["structured", "markdown", "free", "figure", "describe"],
         default="structured",
     )
 
     glm_common = argparse.ArgumentParser(add_help=False)
     glm_common.add_argument(
         "--prompt-mode",
-        choices=["structured", "free", "figure", "describe", "invoice"],
+        choices=["structured", "markdown", "free", "figure", "describe", "invoice"],
         default="structured",
     )
     glm_common.add_argument("--model", type=str, default=None, help="Default: GLM_OCR_MODEL oder glm-ocr")
@@ -461,6 +567,13 @@ def main():
     p.set_defaults(func=cmd_deepseek_img)
 
     p = sub.add_parser(
+        "deepseek-pdf",
+        parents=[pdf_ocr_common, deepseek_common, deepseek_prompt_common],
+        help="DeepSeek OCR 2 auf PDF (PDF->Bilder->Markdown)",
+    )
+    p.set_defaults(func=cmd_deepseek_pdf, prompt_mode="markdown")
+
+    p = sub.add_parser(
         "glm",
         parents=[pptx_common, glm_common, llm_common, post_process_common],
         help="GLM-OCR auf PPTX",
@@ -473,6 +586,13 @@ def main():
         help="GLM-OCR auf Bilder",
     )
     p.set_defaults(func=cmd_glm_img)
+
+    p = sub.add_parser(
+        "glm-pdf",
+        parents=[pdf_ocr_common, glm_common],
+        help="GLM-OCR auf PDF (PDF->Bilder->Markdown)",
+    )
+    p.set_defaults(func=cmd_glm_pdf, prompt_mode="markdown")
 
     p = sub.add_parser(
         "benchmark",
@@ -491,6 +611,16 @@ def main():
     )
     p.add_argument("--methods", type=str, default=None, help="z.B. deepseek,glm")
     p.set_defaults(func=cmd_benchmark_img)
+
+    p = sub.add_parser(
+        "benchmark-pdf",
+        parents=[pdf_input_common, deepseek_common],
+        help="Benchmark: DeepSeek OCR 2 vs. GLM-OCR auf PDF",
+        conflict_handler="resolve",
+    )
+    p.add_argument("--methods", type=str, default=None, help="z.B. deepseek,glm")
+    p.add_argument("--prompt-mode", choices=["markdown", "structured"], default="markdown")
+    p.set_defaults(func=cmd_benchmark_pdf)
 
     p = sub.add_parser(
         "benchmark-local-ocr",

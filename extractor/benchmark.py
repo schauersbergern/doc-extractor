@@ -209,6 +209,77 @@ def benchmark_images(
     return results
 
 
+def benchmark_pdf(
+    pdf_path: str | Path,
+    methods: list[str] | None = None,
+    prompt_mode: Literal["markdown", "structured"] = "markdown",
+    deepseek_quantize: bool = False,
+    deepseek_backend: Literal["transformers", "vllm"] = "transformers",
+    dpi: int = 250,
+) -> list[BenchmarkResult]:
+    """Benchmark für PDF-Dateien via Workflow PDF -> Bilder -> Markdown-OCR."""
+    pdf_path = Path(pdf_path)
+    if methods is None:
+        methods = ["deepseek", "glm"]
+    invalid = sorted(set(methods) - {"deepseek", "glm"})
+    if invalid:
+        raise ValueError(
+            f"Ungültige Benchmark-Methoden: {', '.join(invalid)}. "
+            "Erlaubt sind nur: deepseek, glm"
+        )
+
+    results = []
+
+    if "deepseek" in methods:
+        logger.info("=== Benchmark PDF: DeepSeek OCR 2 ===")
+        from .deepseek import extract_deepseek_pdf
+
+        deepseek_prompt = "markdown" if prompt_mode == "markdown" else "structured"
+        with Timer() as timer:
+            slides = extract_deepseek_pdf(
+                pdf_path,
+                quantize_4bit=deepseek_quantize,
+                prompt_mode=deepseek_prompt,
+                backend=deepseek_backend,
+                dpi=dpi,
+            )
+
+        method = slides[0].extraction_method if slides else "deepseek-ocr2"
+        results.append(_make_benchmark_result(
+            method=method,
+            slides=slides,
+            total_time=timer.elapsed,
+            gpu_required=True,
+            notes=(
+                f"PDF->Bilder->OCR, {'4-bit' if deepseek_quantize else 'volle Präzision'}, "
+                f"Modus: {deepseek_prompt}"
+            ),
+        ))
+
+    if "glm" in methods:
+        logger.info("=== Benchmark PDF: GLM-OCR ===")
+        from .glm_ocr import extract_glm_pdf
+
+        glm_prompt = "markdown" if prompt_mode == "markdown" else "structured"
+        with Timer() as timer:
+            slides = extract_glm_pdf(
+                pdf_path,
+                prompt_mode=glm_prompt,
+                dpi=dpi,
+            )
+
+        method = slides[0].extraction_method if slides else "glm-ocr"
+        results.append(_make_benchmark_result(
+            method=method,
+            slides=slides,
+            total_time=timer.elapsed,
+            gpu_required=True,
+            notes=f"PDF->Bilder->OCR, lokal gehostet, Modus: {glm_prompt}",
+        ))
+
+    return results
+
+
 def format_benchmark_report(results: list[BenchmarkResult]) -> str:
     """Erzeugt einen lesbaren Benchmark-Report (Markdown)."""
     lines = ["# Benchmark-Report: Dokumentenextraktion\n"]

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Literal
 
 from .models import SlideData, Timer
-from .utils import estimate_tokens, pptx_to_images
+from .utils import estimate_tokens, pdf_to_images, pptx_to_images
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +155,7 @@ def _load_vllm() -> dict:
 
 PROMPTS = {
     "structured": "<image>\n<|grounding|>Convert the document to markdown.",
+    "markdown": "<image>\n<|grounding|>Convert the document to markdown. ",
     "free": "<image>\nFree OCR.",
     "figure": "<image>\nParse the figure.",
     "describe": "<image>\nDescribe this image in detail.",
@@ -248,7 +249,7 @@ def extract_deepseek(
     pptx_path: str | Path,
     slide_numbers: list[int] | None = None,
     quantize_4bit: bool = False,
-    prompt_mode: Literal["structured", "free", "figure", "describe"] = "structured",
+    prompt_mode: Literal["structured", "markdown", "free", "figure", "describe"] = "structured",
     backend: Literal["transformers", "vllm"] = "transformers",
     dpi: int = 200,
 ) -> list[SlideData]:
@@ -337,7 +338,7 @@ def extract_deepseek(
 def extract_deepseek_images(
     image_paths: list[str | Path],
     quantize_4bit: bool = False,
-    prompt_mode: Literal["structured", "free", "figure", "describe"] = "structured",
+    prompt_mode: Literal["structured", "markdown", "free", "figure", "describe"] = "structured",
     backend: Literal["transformers", "vllm"] = "transformers",
 ) -> list[SlideData]:
     """Extrahiert Text direkt aus Bilddateien (Rechnungen, Scans).
@@ -391,3 +392,31 @@ def extract_deepseek_images(
                     token_count=estimate_tokens(text),
                 ))
         return results
+
+
+def extract_deepseek_pdf(
+    pdf_path: str | Path,
+    quantize_4bit: bool = False,
+    prompt_mode: Literal["structured", "markdown", "free", "figure", "describe"] = "markdown",
+    backend: Literal["transformers", "vllm"] = "transformers",
+    dpi: int = 250,
+) -> list[SlideData]:
+    """Extrahiert Text aus PDF via Workflow: PDF -> Bilder -> DeepSeek OCR."""
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF nicht gefunden: {pdf_path}")
+
+    with tempfile.TemporaryDirectory(prefix="deepseek_pdf_") as tmp:
+        page_images = pdf_to_images(pdf_path, Path(tmp) / "pages", dpi=dpi)
+        slides = extract_deepseek_images(
+            page_images,
+            quantize_4bit=quantize_4bit,
+            prompt_mode=prompt_mode,
+            backend=backend,
+        )
+
+    for i, slide in enumerate(slides, start=1):
+        slide.slide_number = i
+        slide.title = f"{pdf_path.stem}_page_{i:03d}"
+
+    return slides
