@@ -200,9 +200,17 @@ def cmd_deepseek(args):
     )
     slides = _post_process_if_enabled(args, slides, source_type="powerpoint")
 
-    ext = ".json" if args.format == "json" else ".txt"
+    if args.format == "json":
+        ext = ".json"
+    elif args.format == "markdown":
+        ext = ".md"
+    else:
+        ext = ".txt"
     output = args.output or args.input.with_name(f"{args.input.stem}_deepseek{ext}")
-    _write_output(slides, output, args.format)
+    if args.format == "markdown":
+        _write_markdown_pages(slides, output, title=f"{args.input.name} (DeepSeek OCR 2)")
+    else:
+        _write_output(slides, output, args.format)
     print(f"✓ {len(slides)} Slides -> {output}")
 
 
@@ -263,9 +271,17 @@ def cmd_glm(args):
     )
     slides = _post_process_if_enabled(args, slides, source_type="powerpoint")
 
-    ext = ".json" if args.format == "json" else ".txt"
+    if args.format == "json":
+        ext = ".json"
+    elif args.format == "markdown":
+        ext = ".md"
+    else:
+        ext = ".txt"
     output = args.output or args.input.with_name(f"{args.input.stem}_glm{ext}")
-    _write_output(slides, output, args.format)
+    if args.format == "markdown":
+        _write_markdown_pages(slides, output, title=f"{args.input.name} (GLM-OCR)")
+    else:
+        _write_output(slides, output, args.format)
     print(f"✓ {len(slides)} Slides -> {output}")
 
 
@@ -324,6 +340,7 @@ def cmd_benchmark(args):
         slide_numbers=parse_slide_range(args.slides) if args.slides else None,
         deepseek_quantize=args.quantize_4bit,
         deepseek_backend=args.backend,
+        prompt_mode=args.prompt_mode,
     )
 
     report = format_benchmark_report(results)
@@ -452,6 +469,13 @@ def main():
     pptx_common.add_argument("--format", choices=["text", "json"], default="json")
     pptx_common.add_argument("--dpi", type=int, default=200)
 
+    pptx_ocr_common = argparse.ArgumentParser(add_help=False)
+    pptx_ocr_common.add_argument("input", type=Path, help="PPTX-Datei")
+    pptx_ocr_common.add_argument("-o", "--output", type=Path, default=None)
+    pptx_ocr_common.add_argument("--slides", type=str, default=None, help="z.B. 1,3,5-10")
+    pptx_ocr_common.add_argument("--format", choices=["text", "json", "markdown"], default="json")
+    pptx_ocr_common.add_argument("--dpi", type=int, default=200)
+
     pdf_input_common = argparse.ArgumentParser(add_help=False)
     pdf_input_common.add_argument("input", type=Path, help="PDF-Datei")
     pdf_input_common.add_argument("-o", "--output", type=Path, default=None)
@@ -547,7 +571,7 @@ def main():
 
     p = sub.add_parser(
         "deepseek",
-        parents=[pptx_common, deepseek_common, deepseek_prompt_common, llm_common, post_process_common],
+        parents=[pptx_ocr_common, deepseek_common, deepseek_prompt_common, llm_common, post_process_common],
         help="DeepSeek OCR 2 auf PPTX",
     )
     p.set_defaults(func=cmd_deepseek)
@@ -575,7 +599,7 @@ def main():
 
     p = sub.add_parser(
         "glm",
-        parents=[pptx_common, glm_common, llm_common, post_process_common],
+        parents=[pptx_ocr_common, glm_common, llm_common, post_process_common],
         help="GLM-OCR auf PPTX",
     )
     p.set_defaults(func=cmd_glm)
@@ -601,6 +625,7 @@ def main():
         conflict_handler="resolve",
     )
     p.add_argument("--methods", type=str, default=None, help="z.B. deepseek,glm")
+    p.add_argument("--prompt-mode", choices=["markdown", "structured"], default="structured")
     p.set_defaults(func=cmd_benchmark)
 
     p = sub.add_parser(

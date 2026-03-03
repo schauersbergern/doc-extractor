@@ -67,6 +67,9 @@ Danach kann dieses Repo mit `extract.py glm ...` bzw. Benchmarks gegen den lokal
 # PPTX
 python extract.py benchmark presentation.pptx
 
+# PPTX mit Markdown-Prompt (pptx -> image -> markdown)
+python extract.py benchmark presentation.pptx --prompt-mode markdown
+
 # PDF -> Bilder -> Markdown
 python extract.py benchmark-pdf rechnung.pdf
 
@@ -89,6 +92,16 @@ python extract.py deepseek-pdf data/rechnung.pdf --prompt-mode markdown -o resul
 
 # GLM-OCR (Markdown-Output)
 python extract.py glm-pdf data/rechnung.pdf --prompt-mode markdown -o results/rechnung_glm.md
+```
+
+## PPTX -> Image -> Markdown (DeepSeek/GLM)
+
+```bash
+# DeepSeek OCR 2 auf PPTX als Markdown
+python extract.py deepseek data/praesentation.pptx --prompt-mode markdown --format markdown -o results/praesentation_deepseek.md
+
+# GLM-OCR auf PPTX als Markdown
+python extract.py glm data/praesentation.pptx --prompt-mode markdown --format markdown -o results/praesentation_glm.md
 ```
 
 ## Rechnungs-Scan Pipeline

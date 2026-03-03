@@ -61,6 +61,7 @@ def benchmark_pptx(
     slide_numbers: list[int] | None = None,
     deepseek_quantize: bool = False,
     deepseek_backend: Literal["transformers", "vllm"] = "transformers",
+    prompt_mode: Literal["markdown", "structured"] = "structured",
 ) -> list[BenchmarkResult]:
     """Führt Benchmark über DeepSeek OCR 2 und GLM-OCR aus.
 
@@ -92,12 +93,14 @@ def benchmark_pptx(
         logger.info("=== Benchmark: DeepSeek OCR 2 ===")
         from .deepseek import extract_deepseek
 
+        deepseek_prompt = "markdown" if prompt_mode == "markdown" else "structured"
         with Timer() as timer:
             slides = extract_deepseek(
                 pptx_path,
                 slide_numbers=slide_numbers,
                 quantize_4bit=deepseek_quantize,
                 backend=deepseek_backend,
+                prompt_mode=deepseek_prompt,
             )
 
         method = slides[0].extraction_method if slides else "deepseek-ocr2"
@@ -107,7 +110,7 @@ def benchmark_pptx(
             total_time=timer.elapsed,
             gpu_required=True,
             notes=f"Lokal, {'4-bit' if deepseek_quantize else 'volle Präzision'}, "
-                  f"DSGVO-konform",
+                  f"DSGVO-konform, Modus: {deepseek_prompt}",
         ))
 
     # === GLM-OCR ===
@@ -115,11 +118,12 @@ def benchmark_pptx(
         logger.info("=== Benchmark: GLM-OCR ===")
         from .glm_ocr import extract_glm
 
+        glm_prompt = "markdown" if prompt_mode == "markdown" else "structured"
         with Timer() as timer:
             slides = extract_glm(
                 pptx_path,
                 slide_numbers=slide_numbers,
-                prompt_mode="structured",
+                prompt_mode=glm_prompt,
             )
 
         method = slides[0].extraction_method if slides else "glm-ocr"
@@ -128,7 +132,7 @@ def benchmark_pptx(
             slides=slides,
             total_time=timer.elapsed,
             gpu_required=True,
-            notes="Lokal gehostetes Vision-OCR (OpenAI-kompatibler Endpoint)",
+            notes=f"Lokal gehostetes Vision-OCR (OpenAI-kompatibler Endpoint), Modus: {glm_prompt}",
         ))
 
     return results
