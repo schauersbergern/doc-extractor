@@ -256,6 +256,74 @@ def cmd_deepseek_pdf(args):
     print(f"✓ {len(slides)} Seiten -> {output}")
 
 
+def cmd_deepseek_invoices(args):
+    """DeepSeek OCR 2 + LLM-Property-Extraktion auf Rechnungs-PDFs (JSON-Output)."""
+    from extractor.deepseek import extract_deepseek_pdf
+    from extractor.invoice_properties import PROPERTY_KEYS, extract_invoice_properties, normalize_value
+
+    input_dir = args.input_dir
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Ordner nicht gefunden: {input_dir}")
+
+    pdfs = sorted(
+        p for p in input_dir.iterdir()
+        if p.is_file() and p.suffix.lower() == ".pdf"
+    )
+    if not pdfs:
+        raise FileNotFoundError(f"Keine PDFs in {input_dir}")
+
+    items = []
+    for pdf in pdfs:
+        slides = extract_deepseek_pdf(
+            pdf,
+            quantize_4bit=args.quantize_4bit,
+            prompt_mode=args.prompt_mode,
+            backend=args.backend,
+            dpi=args.dpi,
+        )
+        ocr_text = "\n\n".join(s.content for s in slides if (s.content or "").strip())
+        properties = extract_invoice_properties(
+            ocr_text,
+            provider=args.llm_provider,
+            model=args.llm_model,
+        )
+        fill_count = sum(1 for k in PROPERTY_KEYS if normalize_value(properties.get(k)))
+        items.append(
+            {
+                "file": str(pdf),
+                "pages": len(slides),
+                "ocr_text": ocr_text,
+                "properties": properties,
+                "filled_properties": fill_count,
+                "filled_ratio": round(fill_count / len(PROPERTY_KEYS), 4),
+            }
+        )
+
+    avg_fill_ratio = (
+        round(sum(i["filled_ratio"] for i in items) / len(items), 4) if items else 0.0
+    )
+    result = {
+        "method": "deepseek",
+        "task": "invoice_property_extraction",
+        "input_dir": str(input_dir),
+        "total_files": len(items),
+        "llm": {"provider": args.llm_provider, "model": args.llm_model or "(default)"},
+        "ocr": {
+            "backend": args.backend,
+            "prompt_mode": args.prompt_mode,
+            "dpi": args.dpi,
+            "quantize_4bit": bool(args.quantize_4bit),
+        },
+        "avg_property_fill_ratio": avg_fill_ratio,
+        "items": items,
+    }
+
+    output = args.output or Path("results/invoice_properties_deepseek.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"✓ {len(items)} Rechnungs-PDFs -> {output}")
+
+
 def cmd_glm(args):
     """Modus 4: GLM-OCR auf PPTX."""
     from extractor.glm_ocr import extract_glm
@@ -596,6 +664,16 @@ def main():
         help="DeepSeek OCR 2 auf PDF (PDF->Bilder->Markdown)",
     )
     p.set_defaults(func=cmd_deepseek_pdf, prompt_mode="markdown")
+
+    p = sub.add_parser(
+        "deepseek-invoices",
+        parents=[deepseek_common, deepseek_prompt_common, llm_common],
+        help="Rechnungs-PDFs: DeepSeek OCR + LLM-Property-Extraktion (JSON)",
+    )
+    p.add_argument("input_dir", type=Path, nargs="?", default=Path("data/rechnungen"))
+    p.add_argument("-o", "--output", type=Path, default=None)
+    p.add_argument("--dpi", type=int, default=250)
+    p.set_defaults(func=cmd_deepseek_invoices, prompt_mode="structured")
 
     p = sub.add_parser(
         "glm",

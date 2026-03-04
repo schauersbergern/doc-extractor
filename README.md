@@ -17,6 +17,7 @@ Aktueller Fokus:
 | `vision-ppts` | `extract.py vision-ppts [ppts]` | Vision-LLM auf alle gaengigen Formate im Ordner |
 | `deepseek` | `extract.py deepseek <pptx>` | Lokale OCR mit DeepSeek OCR 2 |
 | `deepseek-pdf` | `extract.py deepseek-pdf <pdf>` | PDF -> Bilder -> Markdown (DeepSeek OCR 2) |
+| `deepseek-invoices` | `extract.py deepseek-invoices [ordner]` | Rechnungs-PDFs -> OCR + LLM-Properties als JSON |
 | `glm` | `extract.py glm <pptx>` | Lokale OCR via GLM-OCR Endpoint |
 | `glm-pdf` | `extract.py glm-pdf <pdf>` | PDF -> Bilder -> Markdown (GLM-OCR) |
 
@@ -113,6 +114,14 @@ Im lokalen OCR-Benchmark fuer Rechnungen:
 
 Wichtig: Regex-Heuristik wurde durch LLM-Extraktion ersetzt.
 
+Direktlauf (DeepSeek-only, JSON-Output pro Rechnung inkl. Properties):
+```bash
+python extract.py deepseek-invoices data/rechnungen \
+  --backend transformers \
+  --prompt-mode structured \
+  -o results/invoice_properties_deepseek.json
+```
+
 ## Finaler Post-Processing Schritt (Vektorisierung)
 
 Fuer Handschrift und PowerPoint wird ein finaler LLM-Transformationsschritt ausgefuehrt:
@@ -170,6 +179,7 @@ extract.py vision-ppts [ppts]
 extract.py deepseek <pptx>
 extract.py deepseek-img <bilder...>
 extract.py deepseek-pdf <pdf>
+extract.py deepseek-invoices [ordner]
 extract.py glm <pptx>
 extract.py glm-img <bilder...>
 extract.py glm-pdf <pdf>
