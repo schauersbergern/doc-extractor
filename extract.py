@@ -67,12 +67,20 @@ def _extract_source_file(slide) -> str:
     return ""
 
 
+def _default_vector_ready_output(raw_output_path: Path | None) -> Path:
+    """Ermittelt den Standardpfad fuer das gesammelte Vector-Ready-Markdown."""
+    if raw_output_path is None:
+        return Path("ppts_vision_vector_ready.md")
+
+    if raw_output_path.suffix:
+        return raw_output_path.with_name(f"{raw_output_path.stem}_vector_ready.md")
+
+    return raw_output_path.with_name(f"{raw_output_path.name}_vector_ready.md")
+
+
 def _write_vector_ready_markdown(slides, output_path: Path) -> Path:
     """Schreibt alle Vector-Ready-Texte aus vision-ppts in eine Markdown-Datei."""
-    if output_path.suffix:
-        md_path = output_path.with_name(f"{output_path.stem}_vector_ready.md")
-    else:
-        md_path = output_path.with_name(f"{output_path.name}_vector_ready.md")
+    md_path = output_path if output_path.suffix.lower() == ".md" else output_path.with_suffix(".md")
 
     grouped: dict[str, list] = {}
     for slide in slides:
@@ -179,10 +187,16 @@ def cmd_vision_ppts(args):
     )
     slides = _post_process_if_enabled(args, slides, source_type="powerpoint")
 
-    output = args.output or Path("ppts_vision.json")
-    _write_output(slides, output, args.format)
-    vector_md = _write_vector_ready_markdown(slides, output)
-    print(f"✓ {len(slides)} Seiten/Slides aus {args.input_dir} -> {output}")
+    raw_output = None if args.only_vector_ready else (args.output or Path("ppts_vision.json"))
+    if raw_output is not None:
+        _write_output(slides, raw_output, args.format)
+
+    vector_output = args.vector_ready_output or _default_vector_ready_output(raw_output)
+    vector_md = _write_vector_ready_markdown(slides, vector_output)
+    if raw_output is not None:
+        print(f"✓ {len(slides)} Seiten/Slides aus {args.input_dir} -> {raw_output}")
+    else:
+        print(f"✓ {len(slides)} Seiten/Slides aus {args.input_dir} verarbeitet")
     print(f"✓ Vector-Ready Markdown -> {vector_md}")
 
 
@@ -635,6 +649,17 @@ def main():
     p.add_argument("--dpi", type=int, default=200)
     p.add_argument("--format", choices=["text", "json"], default="json")
     p.add_argument("-o", "--output", type=Path, default=None)
+    p.add_argument(
+        "--vector-ready-output",
+        type=Path,
+        default=None,
+        help="Zieldatei fuer das gesammelte Vector-Ready-Markdown",
+    )
+    p.add_argument(
+        "--only-vector-ready",
+        action="store_true",
+        help="Nur das finale Vector-Ready-Markdown schreiben, kein Rohoutput",
+    )
     p.set_defaults(func=cmd_vision_ppts)
 
     p = sub.add_parser(

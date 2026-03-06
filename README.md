@@ -12,19 +12,19 @@ Aktueller Fokus:
 
 | Modus | Command | Use Case |
 |---|---|---|
-| `direct` | `extract.py direct <pptx>` | Schnelle XML-Textextraktion |
-| `vision` | `extract.py vision <pptx>` | Vision-LLM auf PPTX |
-| `vision-ppts` | `extract.py vision-ppts [ppts]` | Vision-LLM auf alle gaengigen Formate im Ordner |
-| `deepseek` | `extract.py deepseek <pptx>` | Lokale OCR mit DeepSeek OCR 2 |
-| `deepseek-pdf` | `extract.py deepseek-pdf <pdf>` | PDF -> Bilder -> Markdown (DeepSeek OCR 2) |
-| `deepseek-invoices` | `extract.py deepseek-invoices [ordner]` | Rechnungs-PDFs -> OCR + LLM-Properties als JSON |
-| `glm` | `extract.py glm <pptx>` | Lokale OCR via GLM-OCR Endpoint |
-| `glm-pdf` | `extract.py glm-pdf <pdf>` | PDF -> Bilder -> Markdown (GLM-OCR) |
+| `direct` | `python3 extract.py direct <pptx>` | Schnelle XML-Textextraktion |
+| `vision` | `python3 extract.py vision <pptx>` | Vision-LLM auf PPTX |
+| `vision-ppts` | `python3 extract.py vision-ppts [ppts]` | Vision-LLM auf alle gaengigen Formate im Ordner |
+| `deepseek` | `python3 extract.py deepseek <pptx>` | Lokale OCR mit DeepSeek OCR 2 |
+| `deepseek-pdf` | `python3 extract.py deepseek-pdf <pdf>` | PDF -> Bilder -> Markdown (DeepSeek OCR 2) |
+| `deepseek-invoices` | `python3 extract.py deepseek-invoices [ordner]` | Rechnungs-PDFs -> OCR + LLM-Properties als JSON |
+| `glm` | `python3 extract.py glm <pptx>` | Lokale OCR via GLM-OCR Endpoint |
+| `glm-pdf` | `python3 extract.py glm-pdf <pdf>` | PDF -> Bilder -> Markdown (GLM-OCR) |
 
 ## Installation
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 
 # Basis
 pip install -r requirements.txt
@@ -66,19 +66,19 @@ Danach kann dieses Repo mit `extract.py glm ...` bzw. Benchmarks gegen den lokal
 
 ```bash
 # PPTX
-python extract.py benchmark presentation.pptx
+python3 extract.py benchmark presentation.pptx
 
 # PPTX mit Markdown-Prompt (pptx -> image -> markdown)
-python extract.py benchmark presentation.pptx --prompt-mode markdown
+python3 extract.py benchmark presentation.pptx --prompt-mode markdown
 
 # PDF -> Bilder -> Markdown
-python extract.py benchmark-pdf rechnung.pdf
+python3 extract.py benchmark-pdf rechnung.pdf
 
 # Bilder/Rechnungen
-python extract.py benchmark-img rechnung1.png rechnung2.jpg
+python3 extract.py benchmark-img rechnung1.png rechnung2.jpg
 
 # Methoden explizit
-python extract.py benchmark presentation.pptx --methods deepseek,glm
+python3 extract.py benchmark presentation.pptx --methods deepseek,glm
 ```
 
 Outputs:
@@ -89,20 +89,20 @@ Outputs:
 
 ```bash
 # DeepSeek OCR 2 (Markdown-Output)
-python extract.py deepseek-pdf data/rechnung.pdf --prompt-mode markdown -o results/rechnung_deepseek.md
+python3 extract.py deepseek-pdf data/rechnung.pdf --prompt-mode markdown -o results/rechnung_deepseek.md
 
 # GLM-OCR (Markdown-Output)
-python extract.py glm-pdf data/rechnung.pdf --prompt-mode markdown -o results/rechnung_glm.md
+python3 extract.py glm-pdf data/rechnung.pdf --prompt-mode markdown -o results/rechnung_glm.md
 ```
 
 ## PPTX -> Image -> Markdown (DeepSeek/GLM)
 
 ```bash
 # DeepSeek OCR 2 auf PPTX als Markdown
-python extract.py deepseek data/praesentation.pptx --prompt-mode markdown --format markdown -o results/praesentation_deepseek.md
+python3 extract.py deepseek data/praesentation.pptx --prompt-mode markdown --format markdown -o results/praesentation_deepseek.md
 
 # GLM-OCR auf PPTX als Markdown
-python extract.py glm data/praesentation.pptx --prompt-mode markdown --format markdown -o results/praesentation_glm.md
+python3 extract.py glm data/praesentation.pptx --prompt-mode markdown --format markdown -o results/praesentation_glm.md
 ```
 
 ## Rechnungs-Scan Pipeline
@@ -116,7 +116,7 @@ Wichtig: Regex-Heuristik wurde durch LLM-Extraktion ersetzt.
 
 Direktlauf (DeepSeek-only, JSON-Output pro Rechnung inkl. Properties):
 ```bash
-python extract.py deepseek-invoices data/rechnungen \
+python3 extract.py deepseek-invoices data/rechnungen \
   --backend transformers \
   --prompt-mode structured \
   -o results/invoice_properties_deepseek.json
@@ -138,8 +138,19 @@ Deaktivieren (bei Commands mit Post-Processing):
 ## Vision auf `ppts` Ordner mit Multi-Format-Erkennung
 
 ```bash
-python extract.py vision-ppts ppts --provider openai --prompt-mode slide
+python3 extract.py vision-ppts ppts \
+  --provider openai \
+  --prompt-mode slide \
+  --vector-ready-output results/ppts_vector_ready.md \
+  --only-vector-ready
 ```
+
+Dieser Befehl verarbeitet alle unterstuetzten Dokumente im Ordner `ppts` und schreibt nur das finale Vector-Ready-Markdown nach `results/ppts_vector_ready.md`.
+
+Wichtig:
+- `.json` Dateien werden nicht verarbeitet, weil nur unterstuetzte Office-, PDF- und Bildformate eingesammelt werden.
+- Ohne `--only-vector-ready` wird zusaetzlich ein Rohoutput (`ppts_vision.json` oder `-o ...`) geschrieben.
+- Fuer Unterordner kann `--recursive` verwendet werden.
 
 Unterstuetzte Formate:
 - Office: `.ppt`, `.pptx`, `.odp`, `.doc`, `.docx`, `.odt`, `.rtf`, `.xls`, `.xlsx`, `.ods`
@@ -151,11 +162,12 @@ Ablauf:
 2. Alles in Bilder umwandeln
 3. Vision-LLM OCR
 4. Finaler Endtext fuer Vektorisierung
+5. Alle `vector_ready_text` Inhalte in einer Markdown-Datei zusammenfassen
 
 ## Lokaler OCR-Benchmark (Handschrift + Rechnungs-PDF)
 
 ```bash
-python extract.py benchmark-local-ocr \
+python3 extract.py benchmark-local-ocr \
   --handwriting-dir data/handschrift \
   --invoices-dir data/rechnungen \
   --methods deepseek,glm \
@@ -172,21 +184,21 @@ Oder:
 ## Commands
 
 ```text
-extract.py direct <pptx>
-extract.py vision <pptx>
-extract.py vision-img <bilder...>
-extract.py vision-ppts [ppts]
-extract.py deepseek <pptx>
-extract.py deepseek-img <bilder...>
-extract.py deepseek-pdf <pdf>
-extract.py deepseek-invoices [ordner]
-extract.py glm <pptx>
-extract.py glm-img <bilder...>
-extract.py glm-pdf <pdf>
-extract.py benchmark <pptx>
-extract.py benchmark-img <bilder...>
-extract.py benchmark-pdf <pdf>
-extract.py benchmark-local-ocr
+python3 extract.py direct <pptx>
+python3 extract.py vision <pptx>
+python3 extract.py vision-img <bilder...>
+python3 extract.py vision-ppts [ppts] [--vector-ready-output <datei.md>] [--only-vector-ready]
+python3 extract.py deepseek <pptx>
+python3 extract.py deepseek-img <bilder...>
+python3 extract.py deepseek-pdf <pdf>
+python3 extract.py deepseek-invoices [ordner]
+python3 extract.py glm <pptx>
+python3 extract.py glm-img <bilder...>
+python3 extract.py glm-pdf <pdf>
+python3 extract.py benchmark <pptx>
+python3 extract.py benchmark-img <bilder...>
+python3 extract.py benchmark-pdf <pdf>
+python3 extract.py benchmark-local-ocr
 ```
 
 ## Systemvoraussetzungen
