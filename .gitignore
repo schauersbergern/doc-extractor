@@ -13,9 +13,11 @@ __pycache__/
 # Local input/output data (Ordner bleiben, Inhalt wird ignoriert)
 data/**
 ppts/**
+results/**
 results_from_runpod/**
 
 # Platzhalter erlauben
 !data/.gitkeep
 !ppts/.gitkeep
+!results/.gitkeep
 !results_from_runpod/.gitkeep

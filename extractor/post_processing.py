@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from .llm_text import call_text_llm
@@ -31,6 +32,8 @@ Anforderungen:
 
 Gib nur den finalen Endtext zurueck.
 """
+
+logger = logging.getLogger(__name__)
 
 HANDWRITING_PROMPT = """\
 Du bekommst OCR-Text aus Handschrift.
@@ -78,7 +81,16 @@ def post_process_slides_for_vector_db(
     model: str | None = None,
 ) -> list[SlideData]:
     """Schreibt vector_ready_text fuer jede SlideData."""
-    for slide in slides:
+    total = len(slides)
+    for idx, slide in enumerate(slides, start=1):
+        label = slide.title or f"Slide {slide.slide_number}"
+        logger.info(
+            "Post-Processing %s/%s (%s): %s",
+            idx,
+            total,
+            source_type,
+            label,
+        )
         slide.vector_ready_text = transform_text_for_vector_db(
             slide.content,
             source_type=source_type,

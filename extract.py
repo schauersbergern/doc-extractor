@@ -16,6 +16,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import shlex
+import os
 from pathlib import Path
 
 
@@ -30,6 +32,65 @@ def parse_slide_range(spec: str) -> list[int]:
         else:
             slides.add(int(part))
     return sorted(slides)
+
+
+def _parse_env_value(raw_value: str) -> str:
+    """Parst einfache .env Werte inkl. Quotes und optionalem Inline-Kommentar."""
+    value = raw_value.strip()
+    if not value:
+        return ""
+
+    if value[0] in {"'", '"'} and value[-1:] == value[0]:
+        try:
+            return shlex.split(value, comments=False, posix=True)[0]
+        except ValueError:
+            return value[1:-1]
+
+    if " #" in value:
+        value = value.split(" #", 1)[0].rstrip()
+
+    return value
+
+
+def _load_env_file(env_path: Path) -> bool:
+    """Laedt Variablen aus einer .env Datei, ohne vorhandene Env-Werte zu ueberschreiben."""
+    if not env_path.exists():
+        return False
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            continue
+
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        os.environ[key] = _parse_env_value(raw_value)
+
+    return True
+
+
+def _autoload_env() -> Path | None:
+    """Laedt .env aus aktuellem Arbeitsverzeichnis oder Repo-Verzeichnis."""
+    candidates = []
+    cwd_env = Path.cwd() / ".env"
+    script_env = Path(__file__).resolve().parent / ".env"
+
+    for candidate in (cwd_env, script_env):
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        if _load_env_file(candidate):
+            logging.getLogger(__name__).debug(f".env geladen: {candidate}")
+            return candidate
+
+    return None
 
 
 def _write_output(slides, output_path: Path, fmt: str, include_notes: bool = False):
@@ -536,6 +597,8 @@ def cmd_benchmark_local_ocr(args):
 
 
 def main():
+    _autoload_env()
+
     parser = argparse.ArgumentParser(
         description="doc-extractor: Dokumentenextraktion & OCR-Benchmark",
         formatter_class=argparse.RawDescriptionHelpFormatter,

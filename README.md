@@ -43,13 +43,18 @@ pip install -r requirements-local-ocr.txt
 
 ```bash
 cp .env.example .env
-set -a; source .env; set +a
 ```
+
+`extract.py` laedt die `.env` beim Start automatisch aus dem aktuellen Projektordner. Ein manuelles `export` oder `source .env` ist fuer normale CLI-Aufrufe daher nicht noetig.
 
 Zusatzvariablen fuer GLM:
 - `GLM_OCR_BASE_URL` (Default: `http://127.0.0.1:8000/v1`)
 - `GLM_OCR_MODEL` (Default: `glm-ocr`)
 - `GLM_OCR_API_KEY` (Default: `EMPTY`)
+
+Optionale OpenAI-Request-Parameter:
+- `OPENAI_TIMEOUT_SECONDS` (Default: `180`)
+- `OPENAI_MAX_RETRIES` (Default: `2`)
 
 ## GLM-OCR lokal (README Option 2)
 

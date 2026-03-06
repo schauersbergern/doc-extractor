@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from .llm_text import resolve_openai_max_retries, resolve_openai_timeout_seconds
 from .models import SlideData, Timer
 from .utils import (
     document_to_images,
@@ -142,31 +143,47 @@ def _call_openai(
             "Export: export OPENAI_API_KEY='sk-...'"
         )
 
-    client = openai.OpenAI(api_key=api_key)
-
-    response = client.chat.completions.create(
-        model=model,
-        max_completion_tokens=4096,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{media_type};base64,{image_b64}",
-                            "detail": "high",
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt,
-                    },
-                ],
-            },
-        ],
+    timeout_seconds = resolve_openai_timeout_seconds()
+    client = openai.OpenAI(
+        api_key=api_key,
+        timeout=timeout_seconds,
+        max_retries=resolve_openai_max_retries(),
     )
+    logger.info(
+        "Vision-Request an OpenAI (%s, timeout=%.0fs)",
+        model,
+        timeout_seconds,
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            max_completion_tokens=4096,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media_type};base64,{image_b64}",
+                                "detail": "high",
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                    ],
+                },
+            ],
+        )
+    except openai.APITimeoutError as exc:
+        raise TimeoutError(
+            f"OpenAI Vision Request hat nach {timeout_seconds:.0f}s kein Ergebnis geliefert. "
+            "Erhoehe OPENAI_TIMEOUT_SECONDS oder starte den Lauf erneut."
+        ) from exc
 
     return response.choices[0].message.content
 
@@ -350,9 +367,20 @@ def extract_vision_documents(
                 dpi=dpi,
                 prefix=doc_path.stem,
             )
+            logger.info(
+                "Dokument %s hat %s Seiten/Bilder fuer Vision-OCR",
+                doc_path.name,
+                len(images),
+            )
 
             for page_idx, img_path in enumerate(images, start=1):
                 slide_counter += 1
+                logger.info(
+                    "Vision-LLM Seite %s/%s aus %s",
+                    page_idx,
+                    len(images),
+                    doc_path.name,
+                )
                 with Timer() as timer:
                     b64, media_type = image_to_base64(img_path)
                     text = call_fn(b64, media_type, prompt, model=model)
@@ -367,6 +395,13 @@ def extract_vision_documents(
                         extraction_time_seconds=timer.elapsed,
                         token_count=estimate_tokens(text),
                     )
+                )
+                logger.info(
+                    "  → %s / Seite %s fertig: %s Zeichen in %.2fs",
+                    doc_path.name,
+                    page_idx,
+                    len(text),
+                    timer.elapsed,
                 )
 
     return results
